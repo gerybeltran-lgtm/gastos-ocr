@@ -90,10 +90,19 @@ function App() {
       if (response.data.success) {
         setResult(response.data.data);
       } else {
-        setError("Error procesando la boleta: " + response.data.error);
+        const msg = response.data.error || '';
+        if (msg.includes('503') || msg.includes('unavailable')) {
+          setError("El servidor está despertando. Por favor intenta de nuevo en unos segundos.");
+        } else {
+          setError("Error procesando la boleta: " + msg);
+        }
       }
     } catch (err) {
-      setError("Error de conexión con el servidor: " + err.message);
+      if (err.message?.includes('Network') || err.message?.includes('timeout')) {
+        setError("No se pudo conectar con el servidor. Puede estar despertando, intenta de nuevo en unos segundos.");
+      } else {
+        setError("Error de conexión con el servidor: " + err.message);
+      }
     } finally {
       setIsProcessing(false);
     }
@@ -103,6 +112,14 @@ function App() {
     setFile(null);
     setResult(null);
     setError(null);
+  };
+
+  const resetAll = () => {
+    setFile(null);
+    setResult(null);
+    setError(null);
+    setCostCenter("");
+    setDepartment("");
   };
 
   const fetchHistory = async () => {
@@ -377,8 +394,16 @@ function App() {
                     )}
                   </button>
                   {error && (
-                    <div className="mt-5 w-full p-4 bg-red-50 border border-red-200 text-red-600 text-sm rounded-xl text-center font-medium flex items-center justify-center gap-2">
-                      <ShieldAlert className="h-4 w-4" /> {error}
+                    <div className="mt-5 w-full p-4 bg-red-50 border border-red-200 text-red-600 text-sm rounded-xl text-center font-medium">
+                      <div className="flex items-center justify-center gap-2 mb-3">
+                        <ShieldAlert className="h-4 w-4" /> {error}
+                      </div>
+                      <button
+                        onClick={handleUpload}
+                        className="px-5 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg font-bold text-xs transition-colors"
+                      >
+                        🔄 Reintentar
+                      </button>
                     </div>
                   )}
                 </div>
@@ -434,6 +459,13 @@ function App() {
                     className="mt-8 w-full py-4 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-xl font-bold transition-all flex items-center justify-center gap-2 border border-slate-200"
                   >
                     Registrar otro gasto <ArrowRight className="h-4 w-4 text-slate-400" />
+                  </button>
+
+                  <button 
+                    onClick={resetAll}
+                    className="mt-3 w-full py-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-sm"
+                  >
+                    <CheckCircle className="h-4 w-4" /> Finalizar Rendición
                   </button>
                 </div>
               </div>
