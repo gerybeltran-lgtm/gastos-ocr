@@ -212,6 +212,16 @@ function App() {
     return Object.entries(res).sort((a,b) => b[1] - a[1]);
   }, [filteredExpenses]);
 
+  const expensesByCostCenter = useMemo(() => {
+    const res = {};
+    filteredExpenses.forEach(exp => {
+      if (exp.centro_costo) {
+        res[exp.centro_costo] = (res[exp.centro_costo] || 0) + (parseFloat(exp.monto_total) || 0);
+      }
+    });
+    return Object.entries(res).sort((a,b) => b[1] - a[1]);
+  }, [filteredExpenses]);
+
   return (
     <div className="min-h-screen bg-slate-50 font-sans selection:bg-sky-100 selection:text-sky-900 pb-16">
         
@@ -264,30 +274,30 @@ function App() {
           
           {/* TABS */}
           {user && (
-            <div className="max-w-7xl mx-auto px-4 flex gap-3 mt-4 mb-2 overflow-x-auto">
+            <div className="max-w-7xl mx-auto px-4 flex gap-2 sm:gap-3 mt-4 mb-2">
               <button 
                 onClick={() => {setActiveTab('scanner'); setFilterDept(''); setFilterCostCenter(''); setFilterUser('');}}
-                className={`px-4 py-2 rounded-lg font-medium text-[13px] whitespace-nowrap transition-all duration-200 ${activeTab === 'scanner' ? 'bg-indigo-50 text-indigo-600 shadow-sm border border-indigo-100' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
+                className={`flex-1 px-2 sm:px-4 py-2 rounded-lg font-medium text-[12px] sm:text-[13px] whitespace-nowrap transition-all duration-200 ${activeTab === 'scanner' ? 'bg-indigo-50 text-indigo-600 shadow-sm border border-indigo-100' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
               >
-                <div className="flex items-center gap-2">
+                <div className="flex items-center justify-center gap-1.5 sm:gap-2">
                   <Camera className="h-4 w-4" /> Escanear Boleta
                 </div>
               </button>
               <button 
                 onClick={() => {setActiveTab('history'); setFilterDept(''); setFilterCostCenter(''); setFilterUser('');}}
-                className={`px-4 py-2 rounded-lg font-medium text-[13px] whitespace-nowrap transition-all duration-200 ${activeTab === 'history' ? 'bg-purple-50 text-purple-600 shadow-sm border border-purple-100' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
+                className={`flex-1 px-2 sm:px-4 py-2 rounded-lg font-medium text-[12px] sm:text-[13px] whitespace-nowrap transition-all duration-200 ${activeTab === 'history' ? 'bg-purple-50 text-purple-600 shadow-sm border border-purple-100' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
               >
-                <div className="flex items-center gap-2">
+                <div className="flex items-center justify-center gap-1.5 sm:gap-2">
                   <History className="h-4 w-4" /> Mi Historial
                 </div>
               </button>
               {isAdmin && (
                 <button 
                   onClick={() => {setActiveTab('admin'); setFilterDept(''); setFilterCostCenter(''); setFilterUser('');}}
-                  className={`px-4 py-2 rounded-lg font-medium text-[13px] whitespace-nowrap transition-all duration-200 ${activeTab === 'admin' ? 'bg-sky-50 text-sky-600 shadow-sm border border-sky-100' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
+                  className={`flex-1 px-2 sm:px-4 py-2 rounded-lg font-medium text-[12px] sm:text-[13px] whitespace-nowrap transition-all duration-200 ${activeTab === 'admin' ? 'bg-sky-50 text-sky-600 shadow-sm border border-sky-100' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
                 >
-                  <div className="flex items-center gap-2">
-                    <PieChart className="h-4 w-4" /> Panel Administrador
+                  <div className="flex items-center justify-center gap-1.5 sm:gap-2">
+                    <PieChart className="h-4 w-4" /> Panel Admin
                   </div>
                 </button>
               )}
@@ -476,6 +486,7 @@ function App() {
               
               {/* Dashboard Stats */}
               {activeTab === 'admin' ? (
+                <>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                   <div className="bg-white rounded-2xl border border-slate-200 shadow-sm bg-white p-6 col-span-1 md:col-span-2 relative overflow-hidden group">
                     <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity">
@@ -536,7 +547,28 @@ function App() {
                     </div>
                   </div>
                 </div>
+
+                {/* Cost Center Stats - Admin */}
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="h-8 w-8 bg-amber-50 rounded-lg flex items-center justify-center"><Hash className="h-4 w-4 text-amber-500" /></div>
+                    <h3 className="font-bold text-slate-700 text-sm">Gasto por Centro de Costo</h3>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {expensesByCostCenter.map(([cc, amount]) => (
+                      <div key={cc} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                        <span className="text-xs font-mono font-bold text-slate-600 truncate pr-2">{cc}</span>
+                        <span className="text-xs font-bold text-amber-600 whitespace-nowrap">${amount.toLocaleString('es-CL')}</span>
+                      </div>
+                    ))}
+                    {expensesByCostCenter.length === 0 && (
+                      <p className="text-xs text-slate-400 col-span-full">Sin datos de centros de costo.</p>
+                    )}
+                  </div>
+                </div>
+                </>
               ) : (
+                <>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="bg-white rounded-2xl border border-slate-200 shadow-sm bg-white p-6 flex items-center gap-5">
                     <div className="h-14 w-14 bg-sky-50 border border-sky-100 text-[#38bdf8] rounded-2xl flex items-center justify-center shadow-sm">
@@ -557,6 +589,25 @@ function App() {
                     </div>
                   </div>
                 </div>
+
+                {/* Cost Center Stats - History */}
+                {expensesByCostCenter.length > 0 && (
+                  <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="h-8 w-8 bg-amber-50 rounded-lg flex items-center justify-center"><Hash className="h-4 w-4 text-amber-500" /></div>
+                      <h3 className="font-bold text-slate-700 text-sm">Mi Gasto por Centro de Costo</h3>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {expensesByCostCenter.map(([cc, amount]) => (
+                        <div key={cc} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                          <span className="text-xs font-mono font-bold text-slate-600 truncate pr-2">{cc}</span>
+                          <span className="text-xs font-bold text-amber-600 whitespace-nowrap">${amount.toLocaleString('es-CL')}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                </>
               )}
 
               {/* History Table */}
