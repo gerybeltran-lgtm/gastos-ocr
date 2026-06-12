@@ -206,7 +206,7 @@ function App() {
             <div className="flex items-center gap-5 shrink-0">
               
               {/* Powered by Pill */}
-              <div className="flex items-center gap-3 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
+              <div className="hidden sm:flex items-center gap-3 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
                 <img src="/logo.png" alt="E-Voltage" className="object-contain shrink-0 h-6" />
                 <span className="text-[11px] text-slate-400 font-medium border-l border-slate-200 pl-3">Powered by DealFlow</span>
               </div>
@@ -276,6 +276,7 @@ function App() {
                   onError={() => console.log('Login Failed')}
                   theme="outline"
                   shape="pill"
+                  prompt="select_account"
                 />
               </div>
             </div>
