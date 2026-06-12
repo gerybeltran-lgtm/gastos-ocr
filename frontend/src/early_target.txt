@@ -1,0 +1,27 @@
+        {/* HEADER */}
+        <header className="glass-header sticky top-0 z-20">
+          <div className="max-w-6xl mx-auto px-4 h-20 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <img src="/logo.png" alt="E-Voltage" className="h-10 object-contain" />
+              <div className="hidden sm:block border-l-2 border-slate-200 pl-4">
+                <h1 className="text-xl font-bold text-slate-800 tracking-tight">Rendición de Gastos</h1>
+                <p className="text-[10px] uppercase tracking-[0.1em] text-slate-500 font-semibold">Integración CRM</p>
+              </div>
+            </div>
+            
+            {user && (
+              <div className="flex items-center gap-4">
+                <div className="text-right hidden sm:block">
+                  <p className="text-sm font-bold text-slate-800">{user.name}</p>
+                  {isAdmin && <p className="text-[10px] text-sky-500 font-bold uppercase tracking-widest mt-0.5">Administrador</p>}
+                </div>
+                {user.picture ? (
+                  <img src={user.picture} alt="Profile" className="h-10 w-10 rounded-full border-2 border-white shadow-md" />
+                ) : (
+                  <div className="h-10 w-10 rounded-full bg-slate-100 border-2 border-slate-200 flex items-center justify-center text-slate-400">
+                    <User className="h-5 w-5" />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>

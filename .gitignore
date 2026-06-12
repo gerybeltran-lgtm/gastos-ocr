@@ -1,0 +1,9 @@
+node_modules
+__pycache__
+.env
+.env.*
+.DS_Store
+credentials.json
+frontend/dist
+temp_*.jpg
+opt_temp_*.jpg

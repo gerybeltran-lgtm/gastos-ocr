@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+python-multipart
+pydantic
+supabase
+opencv-python-headless
+google-cloud-vision
+google-api-python-client
+google-auth
+google-auth-httplib2
+google-auth-oauthlib
+numpy
