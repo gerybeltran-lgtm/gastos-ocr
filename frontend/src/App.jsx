@@ -1,12 +1,24 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Camera, Upload, CheckCircle, FileText, RefreshCcw, DollarSign, Calendar, Hash, User, ShieldAlert, History, Filter, Edit2, Trash2, X, PieChart, Users, Building2, BarChart3, ArrowRight } from 'lucide-react';
+import { Camera, Upload, CheckCircle, FileText, RefreshCcw, DollarSign, Calendar, Hash, User, ShieldAlert, History, Filter, Edit2, Trash2, X, PieChart, Users, Building2, BarChart3, ArrowRight, LogOut } from 'lucide-react';
 import { useGoogleLogin } from '@react-oauth/google';
 import { jwtDecode } from 'jwt-decode';
 import axios from 'axios';
 const ADMIN_EMAILS = ["gerardo.beltran@e-voltage.cl", "jose.diaz@e-voltage.cl"];
 
 function App() {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => {
+    const saved = localStorage.getItem('df_gastos_user');
+    return saved ? JSON.parse(saved) : null;
+  });
+
+  useEffect(() => {
+    if (user) {
+      localStorage.setItem('df_gastos_user', JSON.stringify(user));
+    } else {
+      localStorage.removeItem('df_gastos_user');
+    }
+  }, [user]);
+
   const [activeTab, setActiveTab] = useState('scanner'); // 'scanner' | 'history' | 'admin'
   
   // Scanner States
@@ -254,17 +266,31 @@ function App() {
               
               {user && (
                 <div className="flex items-center gap-3">
-                  <div className="hidden sm:block text-right">
-                    {isAdmin && <p className="text-[9px] text-sky-500 font-bold uppercase tracking-widest leading-none mb-1">Administrador</p>}
-                    <p className="text-sm font-bold text-slate-700 leading-none">{user.name}</p>
-                  </div>
-                  {user.picture ? (
-                    <img src={user.picture} alt="Profile" className="h-8 w-8 rounded-full border border-slate-200 shadow-sm" />
-                  ) : (
-                    <div className="h-8 w-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400">
-                      <User className="h-4 w-4" />
+                  <div className="flex items-center gap-2">
+                    <div className="hidden sm:block text-right">
+                      {isAdmin && <p className="text-[9px] text-sky-500 font-bold uppercase tracking-widest leading-none mb-1">Administrador</p>}
+                      <p className="text-sm font-bold text-slate-700 leading-none">{user.name}</p>
                     </div>
-                  )}
+                    {user.picture ? (
+                      <img src={user.picture} alt="Profile" className="h-8 w-8 rounded-full border border-slate-200 shadow-sm" />
+                    ) : (
+                      <div className="h-8 w-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400">
+                        <User className="h-4 w-4" />
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => {
+                      setUser(null);
+                      setFile(null);
+                      setResult(null);
+                      setError(null);
+                    }}
+                    title="Cerrar sesión"
+                    className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-slate-50 rounded-lg transition-colors border border-transparent hover:border-slate-100 flex items-center justify-center"
+                  >
+                    <LogOut className="h-4.5 w-4.5" />
+                  </button>
                 </div>
               )}
             </div>
