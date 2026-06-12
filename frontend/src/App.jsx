@@ -1,10 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Camera, Upload, CheckCircle, FileText, RefreshCcw, DollarSign, Calendar, Hash, User, ShieldAlert, History, Filter, Edit2, Trash2, X, PieChart, Users, Building2, BarChart3, ArrowRight } from 'lucide-react';
-import { GoogleOAuthProvider, useGoogleLogin } from '@react-oauth/google';
+import { useGoogleLogin } from '@react-oauth/google';
 import { jwtDecode } from 'jwt-decode';
 import axios from 'axios';
-
-const clientId = '478414532725-9plr5a15q3s6ti4qhref9m0as3baq6k3.apps.googleusercontent.com';
 const ADMIN_EMAILS = ["gerardo.beltran@e-voltage.cl", "jose.diaz@e-voltage.cl"];
 
 function App() {
@@ -198,8 +196,7 @@ function App() {
   }, [filteredExpenses]);
 
   return (
-    <GoogleOAuthProvider clientId={clientId}>
-      <div className="min-h-screen bg-slate-50 font-sans selection:bg-sky-100 selection:text-sky-900 pb-16">
+    <div className="min-h-screen bg-slate-50 font-sans selection:bg-sky-100 selection:text-sky-900 pb-16">
         
         {/* HEADER */}
         <header className="bg-white border-b border-slate-100 sticky top-0 z-20">
@@ -718,7 +715,6 @@ function App() {
           )}
         </main>
       </div>
-    </GoogleOAuthProvider>
   );
 }
 
