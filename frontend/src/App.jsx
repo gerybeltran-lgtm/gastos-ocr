@@ -682,7 +682,7 @@ function App() {
                               )}
                             </td>
                             <td className="p-5 text-right">
-                              <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <div className="flex items-center justify-end gap-2 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                                 <button 
                                   onClick={() => startEdit(exp)}
                                   className="p-2 text-slate-400 hover:text-[#38bdf8] hover:bg-sky-50 rounded-lg transition-all"
