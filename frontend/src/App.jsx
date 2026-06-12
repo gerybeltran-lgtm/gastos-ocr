@@ -232,9 +232,7 @@ function App() {
             {/* Left: App Branding (DealFlow Style) */}
             <div className="flex items-center gap-3">
               {/* Yellow DealFlow Icon */}
-              <div className="shrink-0 h-10 w-10 bg-amber-500 rounded-[10px] flex items-center justify-center text-white shadow-sm">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
-              </div>
+              <img src="/icon-192.png" alt="DealFlow Gastos" className="shrink-0 h-10 w-10 rounded-[10px] shadow-sm" />
               
               <div className="flex flex-col">
                 <div className="flex items-center gap-2">
@@ -308,9 +306,7 @@ function App() {
         <main className="max-w-6xl mx-auto px-4 py-8">
           {!user ? (
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-10 flex flex-col items-center text-center max-w-md mx-auto mt-16 bg-white">
-              <div className="h-20 w-20 bg-sky-50 rounded-full flex items-center justify-center mb-6 border border-sky-100">
-                <ShieldAlert className="h-10 w-10 text-[#38bdf8]" />
-              </div>
+              <img src="/icon-192.png" alt="DealFlow Gastos" className="h-20 w-20 rounded-2xl shadow-md mb-6" />
               <h2 className="text-3xl font-bold text-slate-800 mb-3">Acceso Restringido</h2>
               <p className="text-slate-500 mb-8 leading-relaxed">Inicia sesión con tu cuenta corporativa para gestionar y rendir gastos.</p>
               <div className="transform hover:scale-105 transition-transform duration-300">
@@ -733,7 +729,7 @@ function App() {
                               )}
                             </td>
                             <td className="p-5 text-right">
-                              <div className="flex items-center justify-end gap-2 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                              <div className="flex items-center justify-end gap-2">
                                 <button 
                                   onClick={() => startEdit(exp)}
                                   className="p-2 text-slate-400 hover:text-[#38bdf8] hover:bg-sky-50 rounded-lg transition-all"
