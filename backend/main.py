@@ -27,7 +27,8 @@ SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 from procesador_gastos import preprocess_image, extract_text_from_image, parse_receipt_data
-from google_services import upload_image_to_drive, append_row_to_sheets, invalidate_row_in_sheets
+from google_services import upload_image_to_drive, overwrite_sheets
+from typing import List
 
 app = FastAPI(title="API Rendición de Gastos")
 
@@ -57,6 +58,9 @@ class SaveExpenseRequest(BaseModel):
     monto_total: float
     iva: float
     link_drive: str
+
+class ExportRequest(BaseModel):
+    rows: List[list]
 
 @app.post("/upload-receipt")
 async def upload_receipt(
@@ -170,27 +174,19 @@ async def save_receipt(data: SaveExpenseRequest):
             "fecha_captura": fecha_captura
         }
         supabase.table("gastos").insert(supabase_data).execute()
-
-        # Guardar en Google Sheets
-        fila_sheets = [
-            data.id,
-            "Válido",
-            fecha_captura,
-            data.usuario_nombre,
-            data.usuario_email,
-            data.departamento,
-            data.centro_costo,
-            data.rut_proveedor,
-            data.fecha_boleta,
-            data.monto_total,
-            data.iva,
-            data.link_drive
-        ]
-        append_row_to_sheets(fila_sheets)
         
         return {"success": True, "data": supabase_data}
     except Exception as e:
         print(f"Error guardando recibo: {str(e)}")
+        return {"success": False, "error": str(e)}
+
+@app.post("/export-sheets")
+async def export_sheets(data: ExportRequest):
+    try:
+        overwrite_sheets(data.rows)
+        return {"success": True}
+    except Exception as e:
+        print(f"Error exportando a Sheets: {str(e)}")
         return {"success": False, "error": str(e)}
 
 @app.get("/history")
@@ -219,9 +215,7 @@ async def admin_history(email: str):
 @app.delete("/expense/{expense_id}")
 async def delete_expense(expense_id: str):
     try:
-        # 1. Invalidar en Google Sheets
-        invalidate_row_in_sheets(expense_id)
-        # 2. Eliminar en Supabase
+        # 1. Eliminar en Supabase
         supabase.table("gastos").delete().eq("id", expense_id).execute()
         return {"success": True}
     except Exception as e:
@@ -237,9 +231,6 @@ async def edit_expense(expense_id: str, data: EditExpenseRequest):
             
         old_expense = response.data[0]
         
-        # 1. Invalidar la fila vieja en Google Sheets
-        invalidate_row_in_sheets(expense_id)
-        
         # Calcular nuevo IVA
         nuevo_monto = data.monto_total
         nuevo_iva = round(nuevo_monto * 0.19)
@@ -254,24 +245,6 @@ async def edit_expense(expense_id: str, data: EditExpenseRequest):
             "iva": nuevo_iva
         }
         supabase.table("gastos").update(update_data).eq("id", expense_id).execute()
-        
-        # 2. Agregar nueva fila Válida al Sheets
-        fecha_captura = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        fila_sheets = [
-            expense_id,
-            "Válido (Editado)",
-            fecha_captura,
-            old_expense.get("usuario_nombre"),
-            old_expense.get("usuario_email"),
-            data.departamento,
-            data.centro_costo,
-            data.rut_proveedor,
-            data.fecha_boleta,
-            nuevo_monto,
-            nuevo_iva,
-            old_expense.get("link_drive")
-        ]
-        append_row_to_sheets(fila_sheets)
         
         return {"success": True}
     except Exception as e:

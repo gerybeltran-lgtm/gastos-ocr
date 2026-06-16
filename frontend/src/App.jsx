@@ -34,6 +34,7 @@ function App() {
   // History & Admin States
   const [expenses, setExpenses] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [filterDept, setFilterDept] = useState("");
   const [filterCostCenter, setFilterCostCenter] = useState("");
   const [filterUser, setFilterUser] = useState("");
@@ -213,6 +214,39 @@ function App() {
     } catch (err) {
       console.error("Error updating", err);
       alert("Error al actualizar el gasto");
+    }
+  };
+
+  const handleExport = async () => {
+    setIsExporting(true);
+    try {
+      // Formatear filas para exportar: [ID, Estado, Fecha, Nombre, Email, Dept, CC, RUT, FechaBoleta, Monto, IVA, Link]
+      const rows = filteredExpenses.map(exp => [
+        exp.id,
+        "Válido",
+        exp.fecha_captura || "",
+        exp.usuario_nombre || "",
+        exp.usuario_email || "",
+        exp.departamento || "",
+        exp.centro_costo || "",
+        exp.rut_proveedor || "",
+        exp.fecha_boleta || "",
+        exp.monto_total || 0,
+        exp.iva || 0,
+        exp.link_drive || ""
+      ]);
+
+      const response = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/export-sheets`, { rows });
+      if (response.data.success) {
+        alert(`Se han exportado ${rows.length} registros a Google Sheets con éxito.`);
+      } else {
+        alert("Error al exportar: " + response.data.error);
+      }
+    } catch (err) {
+      console.error("Export error", err);
+      alert("Error de red al exportar a Sheets.");
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -752,13 +786,22 @@ function App() {
                         ))}
                       </select>
                     </div>
-                    <div className="flex items-end">
+                    <div className="flex items-end gap-2">
                       <button 
                         onClick={fetchHistory} 
-                        className="h-[42px] px-4 w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-slate-500/20 focus:border-slate-500 transition-all rounded-lg hover:bg-slate-50 transition-colors flex items-center justify-center"
+                        className="h-[42px] px-4 bg-white border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-slate-500/20 focus:border-slate-500 hover:bg-slate-50 transition-colors flex items-center justify-center"
                         title="Actualizar"
                       >
-                        <RefreshCcw className={`h-4 w-4 text-slate-500 ${loadingHistory ? 'animate-spin text-[#38bdf8]' : ''}`} />
+                        <RefreshCcw className={`h-4 w-4 text-slate-500 ${loadingHistory ? 'animate-spin' : ''}`} />
+                      </button>
+                      <button 
+                        onClick={handleExport}
+                        disabled={isExporting}
+                        className="h-[42px] px-4 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-lg outline-none hover:bg-emerald-100 transition-colors flex items-center justify-center gap-2 font-bold text-sm shadow-sm whitespace-nowrap"
+                        title="Exportar datos actuales a Google Sheets"
+                      >
+                        {isExporting ? <RefreshCcw className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                        <span className="hidden sm:inline">Exportar a Sheets</span>
                       </button>
                     </div>
                   </div>
