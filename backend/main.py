@@ -6,6 +6,7 @@ import shutil
 import uuid
 from pydantic import BaseModel
 from supabase import create_client, Client
+import fitz  # PyMuPDF
 
 # Configurar credenciales de Google antes de importar el procesador
 import json
@@ -63,6 +64,29 @@ async def upload_receipt(
         
         with open(temp_filepath, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
+            
+        # 1.5. Si es PDF, convertir la primera página a imagen
+        if file.filename.lower().endswith(".pdf") or file.content_type == "application/pdf":
+            try:
+                doc = fitz.open(temp_filepath)
+                if len(doc) > 0:
+                    page = doc.load_page(0)
+                    pix = page.get_pixmap(dpi=300)
+                    pdf_img_filename = f"pdf_img_{uuid.uuid4()}.jpg"
+                    pdf_img_filepath = os.path.join(BASE_DIR, pdf_img_filename)
+                    pix.save(pdf_img_filepath)
+                    
+                    # Limpiar el PDF original y apuntar a la imagen generada
+                    os.remove(temp_filepath)
+                    temp_filepath = pdf_img_filepath
+                    temp_filename = pdf_img_filename
+                    
+                    # Actualizar el nombre para cuando se suba a Google Drive
+                    file.filename = pdf_img_filename
+                doc.close()
+            except Exception as e:
+                print(f"Error procesando PDF: {str(e)}")
+                return {"success": False, "error": f"Error leyendo PDF: {str(e)}"}
             
         # 2. Preprocesar imagen con OpenCV
         optimized_filepath = os.path.join(BASE_DIR, f"opt_{temp_filename}")

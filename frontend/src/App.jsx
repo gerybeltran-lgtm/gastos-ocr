@@ -403,7 +403,7 @@ function App() {
                     )}
                     <input 
                       type="file" 
-                      accept="image/*" 
+                      accept="image/*,application/pdf" 
                       capture="environment" 
                       className="hidden" 
                       onChange={handleFileChange}
