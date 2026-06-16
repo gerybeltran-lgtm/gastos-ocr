@@ -40,14 +40,14 @@ def upload_image_to_drive(file_path, filename):
 
 def overwrite_sheets(rows):
     """
-    Limpia la hoja (excepto encabezados) y escribe los nuevos datos exportados a demanda.
+    Limpia la hoja (incluyendo encabezados) y escribe los nuevos datos exportados a demanda.
     """
     _, sheets_service = get_google_services()
     
-    # 1. Limpiar datos anteriores (A2 hasta L)
+    # 1. Limpiar datos anteriores (A1 hasta L)
     sheets_service.spreadsheets().values().clear(
         spreadsheetId=SPREADSHEET_ID,
-        range='Hoja 1!A2:L'
+        range='Hoja 1!A1:L'
     ).execute()
     
     if not rows:
@@ -60,7 +60,7 @@ def overwrite_sheets(rows):
     
     result = sheets_service.spreadsheets().values().update(
         spreadsheetId=SPREADSHEET_ID,
-        range='Hoja 1!A2',
+        range='Hoja 1!A1',
         valueInputOption='USER_ENTERED',
         body=body
     ).execute()

@@ -220,8 +220,24 @@ function App() {
   const handleExport = async () => {
     setIsExporting(true);
     try {
-      // Formatear filas para exportar: [ID, Estado, Fecha, Nombre, Email, Dept, CC, RUT, FechaBoleta, Monto, IVA, Link]
-      const rows = filteredExpenses.map(exp => [
+      // Encabezados de la tabla
+      const headers = [
+        "ID Gasto", 
+        "Estado", 
+        "Fecha Captura", 
+        "Usuario", 
+        "Email", 
+        "Departamento", 
+        "Centro de Costo", 
+        "RUT Proveedor", 
+        "Fecha Boleta", 
+        "Monto Total", 
+        "IVA", 
+        "Link Boleta"
+      ];
+
+      // Formatear filas para exportar
+      const dataRows = filteredExpenses.map(exp => [
         exp.id,
         "Válido",
         exp.fecha_captura || "",
@@ -236,9 +252,11 @@ function App() {
         exp.link_drive || ""
       ]);
 
+      const rows = [headers, ...dataRows];
+
       const response = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/export-sheets`, { rows });
       if (response.data.success) {
-        alert(`Se han exportado ${rows.length} registros a Google Sheets con éxito.`);
+        alert(`Se han exportado ${dataRows.length} registros a Google Sheets con éxito.`);
       } else {
         alert("Error al exportar: " + response.data.error);
       }
