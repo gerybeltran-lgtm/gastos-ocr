@@ -26,6 +26,7 @@ function App() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState(null);
   const [reviewData, setReviewData] = useState(null);
+  const [fallbackData, setFallbackData] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState(null);
   const [costCenter, setCostCenter] = useState("");
@@ -109,7 +110,10 @@ function App() {
         if (msg.includes('503') || msg.includes('unavailable')) {
           setError("El servidor está despertando. Por favor intenta de nuevo en unos segundos.");
         } else {
-          setError("Error procesando la boleta: " + msg);
+          setError("Error de lectura en el archivo. Puedes reintentar o ingresar los datos manualmente.");
+          if (response.data.data) {
+            setFallbackData(response.data.data);
+          }
         }
       }
     } catch (err) {
@@ -560,12 +564,26 @@ function App() {
                       <div className="flex items-center justify-center gap-2 mb-3">
                         <ShieldAlert className="h-4 w-4" /> {error}
                       </div>
-                      <button
-                        onClick={handleUpload}
-                        className="px-5 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg font-bold text-xs transition-colors"
-                      >
-                        🔄 Reintentar
-                      </button>
+                      <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mt-4">
+                        <button
+                          onClick={handleUpload}
+                          className="px-5 py-2.5 w-full sm:w-auto bg-red-100 hover:bg-red-200 text-red-700 rounded-lg font-bold text-xs transition-colors flex items-center justify-center gap-2"
+                        >
+                          <RefreshCcw className="h-4 w-4" /> Reintentar
+                        </button>
+                        {fallbackData && (
+                          <button
+                            onClick={() => {
+                              setError(null);
+                              setReviewData(fallbackData);
+                              setFallbackData(null);
+                            }}
+                            className="px-5 py-2.5 w-full sm:w-auto bg-slate-800 hover:bg-slate-900 text-white rounded-lg font-bold text-xs transition-colors flex items-center justify-center gap-2"
+                          >
+                            <Edit2 className="h-4 w-4" /> Ingresar Manualmente
+                          </button>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>

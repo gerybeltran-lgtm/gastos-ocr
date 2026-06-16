@@ -105,17 +105,21 @@ async def upload_receipt(
                 return {"success": False, "error": f"Error leyendo PDF: {str(e)}"}
             
         # 2. Preprocesar imagen con OpenCV
-        optimized_filepath = os.path.join(BASE_DIR, f"opt_{temp_filename}")
-        preprocess_image(temp_filepath, optimized_filepath)
-        
-        # 3. Extraer texto con Google Cloud Vision
-        texto_extraido = extract_text_from_image(optimized_filepath)
-        
-        # 4. Extraer datos con Regex
-        datos_estructurados = parse_receipt_data(texto_extraido)
+        ocr_error = False
+        try:
+            optimized_filepath = os.path.join(BASE_DIR, f"opt_{temp_filename}")
+            preprocess_image(temp_filepath, optimized_filepath)
+            texto_extraido = extract_text_from_image(optimized_filepath)
+            datos_estructurados = parse_receipt_data(texto_extraido)
+            upload_target = optimized_filepath
+        except Exception as e:
+            print(f"OCR Error: {str(e)}")
+            ocr_error = True
+            datos_estructurados = {}
+            upload_target = temp_filepath
         
         # 5. Subir la imagen procesada (u original) a Google Drive
-        drive_link = upload_image_to_drive(optimized_filepath, file.filename)
+        drive_link = upload_image_to_drive(upload_target, file.filename)
         
         # 6. Preparar datos
         fecha_captura = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -134,16 +138,25 @@ async def upload_receipt(
             "usuario_email": userEmail,
             "departamento": department,
             "centro_costo": costCenter,
-            "rut_proveedor": datos_estructurados.get("rut_proveedor", "No detectado"),
-            "fecha_boleta": datos_estructurados.get("fecha", "No detectada"),
+            "rut_proveedor": datos_estructurados.get("rut_proveedor", ""),
+            "fecha_boleta": datos_estructurados.get("fecha", ""),
             "monto_total": monto_int,
             "iva": iva,
             "link_drive": drive_link
         }
         
         # 7. Limpiar archivos temporales
-        os.remove(temp_filepath)
-        os.remove(optimized_filepath)
+        if os.path.exists(temp_filepath):
+            os.remove(temp_filepath)
+        if 'optimized_filepath' in locals() and os.path.exists(optimized_filepath):
+            os.remove(optimized_filepath)
+            
+        if ocr_error:
+            return {
+                "success": False,
+                "error": "Error de lectura",
+                "data": supabase_data
+            }
         
         return {
             "success": True,
