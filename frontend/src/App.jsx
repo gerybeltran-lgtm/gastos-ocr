@@ -218,6 +218,15 @@ function App() {
   };
 
   const handleExport = async () => {
+    const isFiltered = filterDept || filterCostCenter || filterUser;
+    const mensaje = isFiltered 
+      ? `Estás a punto de exportar a Google Sheets SOLO los ${filteredExpenses.length} registros que cumplen con tus filtros actuales.\n\nEsto sobrescribirá la planilla.\n\n¿Deseas continuar?`
+      : `Estás a punto de exportar TODOS los registros (${filteredExpenses.length} en total) a Google Sheets.\n\nEsto sobrescribirá la planilla.\n\n¿Deseas continuar?`;
+      
+    if (!window.confirm(mensaje)) {
+      return;
+    }
+    
     setIsExporting(true);
     try {
       // Encabezados de la tabla
