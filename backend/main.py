@@ -206,7 +206,7 @@ async def history(email: str):
 @app.get("/admin/history")
 async def admin_history(email: str):
     ADMIN_EMAILS = ["gerardo.beltran@e-voltage.cl", "jose.diaz@e-voltage.cl"]
-    if email not in ADMIN_EMAILS:
+    if email.lower() not in ADMIN_EMAILS:
         return {"success": False, "error": "Acceso denegado"}
     try:
         # Obtenemos TODOS los gastos para el panel admin

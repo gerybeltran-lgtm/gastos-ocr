@@ -42,7 +42,7 @@ function App() {
   const [editingExpense, setEditingExpense] = useState(null);
   const [editForm, setEditForm] = useState({});
 
-  const isAdmin = user && ADMIN_EMAILS.includes(user.email);
+  const isAdmin = user && ADMIN_EMAILS.includes(user.email.toLowerCase());
 
   const login = useGoogleLogin({
     onSuccess: async (tokenResponse) => {
