@@ -257,6 +257,7 @@ function App() {
       const response = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/export-sheets`, { rows });
       if (response.data.success) {
         alert(`Se han exportado ${dataRows.length} registros a Google Sheets con éxito.`);
+        window.open("https://docs.google.com/spreadsheets/d/13uq1ouzbLlc1efCPaaFpqIxVM_x4e8a93KyVdbEPwUo/edit", "_blank");
       } else {
         alert("Error al exportar: " + response.data.error);
       }
@@ -821,6 +822,16 @@ function App() {
                         {isExporting ? <RefreshCcw className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
                         <span className="hidden sm:inline">Exportar a Sheets</span>
                       </button>
+                      <a 
+                        href="https://docs.google.com/spreadsheets/d/13uq1ouzbLlc1efCPaaFpqIxVM_x4e8a93KyVdbEPwUo/edit"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="h-[42px] px-4 bg-sky-50 text-sky-600 border border-sky-200 rounded-lg outline-none hover:bg-sky-100 transition-colors flex items-center justify-center gap-2 font-bold text-sm shadow-sm whitespace-nowrap"
+                        title="Abrir Google Sheets en una nueva pestaña"
+                      >
+                        <FileText className="h-4 w-4" />
+                        <span className="hidden sm:inline">Ver Planilla</span>
+                      </a>
                     </div>
                   </div>
                 </div>
