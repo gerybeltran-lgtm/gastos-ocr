@@ -25,6 +25,8 @@ function App() {
   const [file, setFile] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState(null);
+  const [reviewData, setReviewData] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState(null);
   const [costCenter, setCostCenter] = useState("");
   const [department, setDepartment] = useState("");
@@ -100,7 +102,7 @@ function App() {
       });
 
       if (response.data.success) {
-        setResult(response.data.data);
+        setReviewData(response.data.data);
       } else {
         const msg = response.data.error || '';
         if (msg.includes('503') || msg.includes('unavailable')) {
@@ -120,15 +122,35 @@ function App() {
     }
   };
 
+  const handleSaveReceipt = async () => {
+    setIsSaving(true);
+    setError(null);
+    try {
+      const response = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/save-receipt`, reviewData);
+      if (response.data.success) {
+        setResult(response.data.data);
+        setReviewData(null);
+      } else {
+        setError("Error guardando: " + response.data.error);
+      }
+    } catch (err) {
+      setError("Error de red guardando la boleta.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const resetForm = () => {
     setFile(null);
     setResult(null);
+    setReviewData(null);
     setError(null);
   };
 
   const resetAll = () => {
     setFile(null);
     setResult(null);
+    setReviewData(null);
     setError(null);
     setCostCenter("");
     setDepartment("");
@@ -353,6 +375,52 @@ function App() {
           ) : activeTab === 'scanner' ? (
             /* TAB SCANNER */
             !result ? (
+              reviewData ? (
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden max-w-lg mx-auto">
+                  <div className="p-8">
+                    <h2 className="text-2xl font-bold text-slate-800 mb-2">Revisar Datos Extraídos</h2>
+                    <p className="text-slate-500 text-sm mb-6">Verifica que la información extraída por la IA sea correcta antes de guardar.</p>
+                    
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 mb-1 uppercase">RUT Proveedor</label>
+                        <input type="text" value={reviewData.rut_proveedor} onChange={(e) => setReviewData({...reviewData, rut_proveedor: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 mb-1 uppercase">Fecha Boleta</label>
+                        <input type="text" value={reviewData.fecha_boleta} onChange={(e) => setReviewData({...reviewData, fecha_boleta: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 mb-1 uppercase">Monto Total</label>
+                        <input type="number" value={reviewData.monto_total} onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 0;
+                            setReviewData({...reviewData, monto_total: val, iva: Math.round(val * 0.19)});
+                          }} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 mb-1 uppercase">IVA Calculado</label>
+                        <input type="number" value={reviewData.iva} onChange={(e) => setReviewData({...reviewData, iva: parseFloat(e.target.value) || 0})} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+                      </div>
+                    </div>
+
+                    <button 
+                      onClick={handleSaveReceipt}
+                      disabled={isSaving}
+                      className={`mt-8 w-full py-4 rounded-xl font-bold flex items-center justify-center gap-3 text-lg ${isSaving ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-sm tracking-wide transition-colors'}`}
+                    >
+                      {isSaving ? (
+                        <><RefreshCcw className="h-6 w-6 animate-spin" /> Guardando...</>
+                      ) : (
+                        <><CheckCircle className="h-6 w-6" /> Aprobar y Guardar</>
+                      )}
+                    </button>
+                    {error && <div className="mt-4 text-red-500 text-sm font-medium text-center">{error}</div>}
+                    <button onClick={() => { setReviewData(null); setFile(null); }} className="w-full mt-4 py-2 text-slate-400 hover:text-slate-600 text-sm font-medium transition-colors">
+                      Cancelar y volver a escanear
+                    </button>
+                  </div>
+                </div>
+              ) : (
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden max-w-lg mx-auto bg-white">
                 <div className="p-8">
                   <div className="text-center mb-8">
@@ -440,6 +508,7 @@ function App() {
                   )}
                 </div>
               </div>
+              )
             ) : (
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden max-w-lg mx-auto bg-white">
                 <div className="bg-gradient-to-br from-[#38bdf8] to-[#0284c7] p-8 flex flex-col items-center text-white relative overflow-hidden">

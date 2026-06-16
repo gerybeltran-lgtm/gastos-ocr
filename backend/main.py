@@ -46,6 +46,18 @@ class EditExpenseRequest(BaseModel):
     fecha_boleta: str
     monto_total: float
 
+class SaveExpenseRequest(BaseModel):
+    id: str
+    usuario_nombre: str
+    usuario_email: str
+    departamento: str
+    centro_costo: str
+    rut_proveedor: str
+    fecha_boleta: str
+    monto_total: float
+    iva: float
+    link_drive: str
+
 @app.post("/upload-receipt")
 async def upload_receipt(
     file: UploadFile = File(...),
@@ -111,7 +123,7 @@ async def upload_receipt(
             monto_int = 0
             iva = 0
 
-        # Guardar en Supabase (CRM)
+        # NO Guardamos en BD todavía, solo devolvemos los datos para revisión
         supabase_data = {
             "id": expense_id,
             "usuario_nombre": userName,
@@ -124,25 +136,6 @@ async def upload_receipt(
             "iva": iva,
             "link_drive": drive_link
         }
-        supabase.table("gastos").insert(supabase_data).execute()
-
-        # Guardar en Google Sheets
-        # [ID, Estado, Fecha Captura, Usuario, Email, Departamento, Centro de Costo, RUT Proveedor, Fecha Boleta, Monto Total, IVA, Link Drive]
-        fila_sheets = [
-            expense_id,
-            "Válido",
-            fecha_captura,
-            userName,
-            userEmail,
-            department,
-            costCenter,
-            datos_estructurados.get("rut_proveedor", "No detectado"),
-            datos_estructurados.get("fecha", "No detectada"),
-            monto_int,
-            iva,
-            drive_link
-        ]
-        append_row_to_sheets(fila_sheets)
         
         # 7. Limpiar archivos temporales
         os.remove(temp_filepath)
@@ -155,6 +148,49 @@ async def upload_receipt(
         
     except Exception as e:
         print(f"Error procesando boleta: {str(e)}")
+        return {"success": False, "error": str(e)}
+
+@app.post("/save-receipt")
+async def save_receipt(data: SaveExpenseRequest):
+    try:
+        fecha_captura = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Guardar en Supabase (CRM)
+        supabase_data = {
+            "id": data.id,
+            "usuario_nombre": data.usuario_nombre,
+            "usuario_email": data.usuario_email,
+            "departamento": data.departamento,
+            "centro_costo": data.centro_costo,
+            "rut_proveedor": data.rut_proveedor,
+            "fecha_boleta": data.fecha_boleta,
+            "monto_total": data.monto_total,
+            "iva": data.iva,
+            "link_drive": data.link_drive,
+            "fecha_captura": fecha_captura
+        }
+        supabase.table("gastos").insert(supabase_data).execute()
+
+        # Guardar en Google Sheets
+        fila_sheets = [
+            data.id,
+            "Válido",
+            fecha_captura,
+            data.usuario_nombre,
+            data.usuario_email,
+            data.departamento,
+            data.centro_costo,
+            data.rut_proveedor,
+            data.fecha_boleta,
+            data.monto_total,
+            data.iva,
+            data.link_drive
+        ]
+        append_row_to_sheets(fila_sheets)
+        
+        return {"success": True, "data": supabase_data}
+    except Exception as e:
+        print(f"Error guardando recibo: {str(e)}")
         return {"success": False, "error": str(e)}
 
 @app.get("/history")
