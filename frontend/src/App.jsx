@@ -470,7 +470,7 @@ function App() {
                 className={`flex-1 px-2 sm:px-4 py-2 rounded-lg font-medium text-[12px] sm:text-[13px] whitespace-nowrap transition-all duration-200 ${activeTab === 'scanner' ? 'bg-indigo-50 text-indigo-600 shadow-sm border border-indigo-100' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
               >
                 <div className="flex items-center justify-center gap-1.5 sm:gap-2">
-                  <Camera className="h-4 w-4" /> Escanear Boleta
+                  <Camera className="h-4 w-4" /> Registrar Documento
                 </div>
               </button>
               <button 
