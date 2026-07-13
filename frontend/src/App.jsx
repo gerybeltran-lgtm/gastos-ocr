@@ -614,21 +614,7 @@ function App() {
                         </div>
                       </div>
 
-                      {/* Campos Dinámicos según tipo de transacción */}
-                      {(transactionType === 'Boleta' || transactionType === 'Factura' || transactionType === 'Sin Respaldo') && (
-                        <div className="pt-2 border-t border-slate-100">
-                          <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">¿Origen del Pago?</label>
-                          <select 
-                            value={origenFondos}
-                            onChange={(e) => setOrigenFondos(e.target.value)}
-                            className="w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all text-sm font-semibold text-slate-700"
-                          >
-                            <option value="" disabled>Selecciona el origen del pago...</option>
-                            <option value="Caja Principal">Fondos por Rendir (Cargo a Caja Principal)</option>
-                            <option value="Casa Comercial">Nota de Crédito (Cargo a Casa Comercial)</option>
-                          </select>
-                        </div>
-                      )}
+
 
 
                       
@@ -716,7 +702,20 @@ function App() {
                     </div>
                   )}
 
-                  <label className={`upload-area w-full h-48 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all ${file ? 'border-[#38bdf8] bg-sky-50' : 'border-slate-300 hover:bg-slate-50'} ${isProcessing ? 'pulse-animation' : ''}`}>
+                  {(transactionType === 'Boleta' || transactionType === 'Factura' || transactionType === 'Sin Respaldo') && (
+                    <div className="w-full mb-6">
+                      <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">¿Origen del Pago?</label>
+                      <select 
+                        value={origenFondos}
+                        onChange={(e) => setOrigenFondos(e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all text-sm font-semibold text-slate-700"
+                      >
+                        <option value="" disabled>Selecciona el origen del pago...</option>
+                        <option value="Caja Principal">Fondos por Rendir (Cargo a Caja Principal)</option>
+                        <option value="Casa Comercial">Nota de Crédito (Cargo a Casa Comercial)</option>
+                      </select>
+                    </div>
+                  )}                  <label className={`upload-area w-full h-48 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all ${file ? 'border-[#38bdf8] bg-sky-50' : 'border-slate-300 hover:bg-slate-50'} ${isProcessing ? 'pulse-animation' : ''}`}>
                     {file ? (
                       <>
                         <CheckCircle className="h-12 w-12 text-[#38bdf8] mb-3" />
@@ -746,15 +745,17 @@ function App() {
                         setReviewData({
                           rut_proveedor: '', fecha_boleta: new Date().toISOString().split('T')[0], monto_total: 0, iva: 0, link_drive: ''
                         });
-                     }} className="w-full mt-3 py-2 text-slate-500 font-medium text-sm hover:text-slate-800 transition-colors">
+                     }} 
+                     disabled={['Boleta', 'Factura', 'Sin Respaldo'].includes(transactionType) && !origenFondos}
+                     className={`w-full mt-3 py-2 font-medium text-sm transition-colors ${(['Boleta', 'Factura', 'Sin Respaldo'].includes(transactionType) && !origenFondos) ? 'text-slate-300 cursor-not-allowed' : 'text-slate-500 hover:text-slate-800'}`}>
                         Continuar sin adjuntar comprobante &rarr;
                      </button>
                   )}
 
                   <button 
                     onClick={handleUpload}
-                    disabled={!file || isProcessing || (transactionType === 'Nota de Crédito' && !facturaAsociada.trim())}
-                    className={`mt-6 w-full py-4 rounded-xl font-bold flex items-center justify-center gap-3 text-lg ${(!file || (transactionType === 'Nota de Crédito' && !facturaAsociada.trim())) ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition-colors shadow-sm font-bold tracking-wide'}`}
+                    disabled={!file || isProcessing || (transactionType === 'Nota de Crédito' && !facturaAsociada.trim()) || (['Boleta', 'Factura', 'Sin Respaldo'].includes(transactionType) && !origenFondos)}
+                    className={`mt-6 w-full py-4 rounded-xl font-bold flex items-center justify-center gap-3 text-lg ${(!file || (transactionType === 'Nota de Crédito' && !facturaAsociada.trim()) || (['Boleta', 'Factura', 'Sin Respaldo'].includes(transactionType) && !origenFondos)) ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition-colors shadow-sm font-bold tracking-wide'}`}
                   >
                     {isProcessing ? (
                       <><RefreshCcw className="h-6 w-6 animate-spin" /> Procesando...</>
