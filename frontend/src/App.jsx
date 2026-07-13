@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Camera, Upload, CheckCircle, FileText, RefreshCcw, DollarSign, Calendar, Hash, User, ShieldAlert, History, Filter, Edit2, Trash2, X, PieChart, Users, Building2, BarChart3, ArrowRight, LogOut } from 'lucide-react';
+import { Camera, Upload, CheckCircle, FileText, RefreshCcw, DollarSign, Calendar, Hash, User, ShieldAlert, History, Filter, Edit2, Trash2, X, PieChart, Users, Building2, BarChart3, ArrowRight, LogOut, AlertTriangle, ArrowDownCircle, Wallet } from 'lucide-react';
 import { useGoogleLogin } from '@react-oauth/google';
 import { jwtDecode } from 'jwt-decode';
 import axios from 'axios';
@@ -22,6 +22,10 @@ function App() {
   const [activeTab, setActiveTab] = useState('scanner'); // 'scanner' | 'history' | 'admin'
   
   // Scanner States
+  const [transactionType, setTransactionType] = useState(null);
+  const [origenFondos, setOrigenFondos] = useState('Caja Principal');
+  const [facturaAsociada, setFacturaAsociada] = useState('');
+  const [descripcion, setDescripcion] = useState('');
   const [file, setFile] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState(null);
@@ -97,6 +101,7 @@ function App() {
     formData.append('userEmail', user.email);
     formData.append('department', department);
     formData.append('costCenter', costCenter);
+    formData.append('skip_ocr', (transactionType === 'Saldo Inicial' || transactionType === 'Ingreso de Dinero' || transactionType === 'Sin Respaldo') ? 'true' : 'false');
 
     try {
       const response = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}` + '/upload-receipt', formData, {
@@ -131,7 +136,8 @@ function App() {
     setIsSaving(true);
     setError(null);
     try {
-      const response = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/save-receipt`, reviewData);
+      const payload = { ...reviewData, tipo_transaccion: transactionType, origen_fondos: origenFondos, factura_asociada: facturaAsociada, descripcion: descripcion };
+      const response = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/save-receipt`, payload);
       if (response.data.success) {
         setResult(response.data.data);
         setReviewData(null);
@@ -150,6 +156,10 @@ function App() {
     setResult(null);
     setReviewData(null);
     setError(null);
+    setTransactionType(null);
+    setOrigenFondos('Caja Principal');
+    setFacturaAsociada('');
+    setDescripcion('');
   };
 
   const resetAll = () => {
@@ -450,39 +460,136 @@ function App() {
             </div>
           ) : activeTab === 'scanner' ? (
             /* TAB SCANNER */
-            !result ? (
+            !transactionType ? (
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden max-w-2xl mx-auto p-8 mt-4">
+                <div className="text-center mb-10">
+                  <h2 className="text-3xl font-black text-slate-800 mb-3 tracking-tight">¿Qué acción deseas realizar?</h2>
+                  <p className="text-slate-500 font-medium">Selecciona el tipo de transacción para continuar.</p>
+                </div>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="col-span-1 sm:col-span-2 mb-2">
+                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2">Rendición de Gastos</h3>
+                  </div>
+                  
+                  <button onClick={() => setTransactionType('Boleta')} className="group p-5 bg-white border-2 border-slate-100 hover:border-[#38bdf8] rounded-2xl flex flex-col items-center justify-center gap-3 transition-all hover:shadow-md">
+                    <div className="h-12 w-12 bg-sky-50 text-[#38bdf8] rounded-full flex items-center justify-center group-hover:scale-110 transition-transform"><FileText className="h-6 w-6" /></div>
+                    <span className="font-bold text-slate-700">Rendición por Boleta</span>
+                  </button>
+                  
+                  <button onClick={() => setTransactionType('Factura')} className="group p-5 bg-white border-2 border-slate-100 hover:border-[#38bdf8] rounded-2xl flex flex-col items-center justify-center gap-3 transition-all hover:shadow-md">
+                    <div className="h-12 w-12 bg-sky-50 text-[#38bdf8] rounded-full flex items-center justify-center group-hover:scale-110 transition-transform"><FileText className="h-6 w-6" /></div>
+                    <span className="font-bold text-slate-700">Rendición por Factura</span>
+                  </button>
+                  
+                  <button onClick={() => setTransactionType('Sin Respaldo')} className="group p-5 bg-white border-2 border-slate-100 hover:border-amber-400 rounded-2xl flex flex-col items-center justify-center gap-3 transition-all hover:shadow-md">
+                    <div className="h-12 w-12 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform"><AlertTriangle className="h-6 w-6" /></div>
+                    <span className="font-bold text-slate-700">Gasto Sin Respaldo</span>
+                  </button>
+                  
+                  <div className="col-span-1 sm:col-span-2 mt-6 mb-2">
+                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2">Gestión de Fondos</h3>
+                  </div>
+
+                  <button onClick={() => setTransactionType('Ingreso de Dinero')} className="group p-5 bg-white border-2 border-slate-100 hover:border-emerald-400 rounded-2xl flex flex-col items-center justify-center gap-3 transition-all hover:shadow-md">
+                    <div className="h-12 w-12 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform"><ArrowDownCircle className="h-6 w-6" /></div>
+                    <span className="font-bold text-slate-700">Ingreso de Dinero</span>
+                  </button>
+                  
+                  <button onClick={() => setTransactionType('Saldo Inicial')} className="group p-5 bg-white border-2 border-slate-100 hover:border-emerald-400 rounded-2xl flex flex-col items-center justify-center gap-3 transition-all hover:shadow-md">
+                    <div className="h-12 w-12 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform"><Wallet className="h-6 w-6" /></div>
+                    <span className="font-bold text-slate-700">Saldo Inicial</span>
+                  </button>
+                  
+                  <button onClick={() => setTransactionType('Nota de Crédito')} className="group p-5 bg-white border-2 border-slate-100 hover:border-purple-400 rounded-2xl flex flex-col items-center justify-center gap-3 transition-all hover:shadow-md">
+                    <div className="h-12 w-12 bg-purple-50 text-purple-500 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform"><RefreshCcw className="h-6 w-6" /></div>
+                    <span className="font-bold text-slate-700">Nota de Crédito</span>
+                  </button>
+                </div>
+              </div>
+            ) : !result ? (
               reviewData ? (
                 <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden max-w-lg mx-auto">
                   <div className="p-8">
-                    <h2 className="text-2xl font-bold text-slate-800 mb-2">Revisar Datos Extraídos</h2>
-                    <p className="text-slate-500 text-sm mb-6">Verifica que la información extraída por la IA sea correcta antes de guardar.</p>
+                    <div className="flex justify-between items-center mb-6">
+                      <h2 className="text-2xl font-bold text-slate-800">Completar Datos</h2>
+                      <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-xs font-bold uppercase">{transactionType}</span>
+                    </div>
                     
-                    <div className="space-y-4">
-                      <div>
-                        <label className="block text-xs font-bold text-slate-500 mb-1 uppercase">RUT Proveedor</label>
-                        <input type="text" value={reviewData.rut_proveedor} onChange={(e) => setReviewData({...reviewData, rut_proveedor: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+                    <div className="space-y-5">
+                      {/* Mostrar RUT y Fecha siempre */}
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-500 mb-1 uppercase">RUT Proveedor</label>
+                          <input type="text" value={reviewData.rut_proveedor} onChange={(e) => setReviewData({...reviewData, rut_proveedor: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-500 mb-1 uppercase">Fecha</label>
+                          <input type="date" value={reviewData.fecha_boleta} onChange={(e) => setReviewData({...reviewData, fecha_boleta: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+                        </div>
                       </div>
-                      <div>
-                        <label className="block text-xs font-bold text-slate-500 mb-1 uppercase">Fecha Boleta</label>
-                        <input type="text" value={reviewData.fecha_boleta} onChange={(e) => setReviewData({...reviewData, fecha_boleta: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+                      
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-500 mb-1 uppercase">Monto Total</label>
+                          <input type="number" value={reviewData.monto_total} onChange={(e) => {
+                              const val = parseFloat(e.target.value) || 0;
+                              setReviewData({...reviewData, monto_total: val, iva: Math.round(val * 0.19)});
+                            }} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold text-sky-600" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-500 mb-1 uppercase">IVA Calculado</label>
+                          <input type="number" value={reviewData.iva} onChange={(e) => setReviewData({...reviewData, iva: parseFloat(e.target.value) || 0})} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+                        </div>
                       </div>
-                      <div>
-                        <label className="block text-xs font-bold text-slate-500 mb-1 uppercase">Monto Total</label>
-                        <input type="number" value={reviewData.monto_total} onChange={(e) => {
-                            const val = parseFloat(e.target.value) || 0;
-                            setReviewData({...reviewData, monto_total: val, iva: Math.round(val * 0.19)});
-                          }} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-slate-500 mb-1 uppercase">IVA Calculado</label>
-                        <input type="number" value={reviewData.iva} onChange={(e) => setReviewData({...reviewData, iva: parseFloat(e.target.value) || 0})} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm" />
-                      </div>
+
+                      {/* Campos Dinámicos según tipo de transacción */}
+                      {(transactionType === 'Boleta' || transactionType === 'Factura') && (
+                        <div className="pt-2 border-t border-slate-100">
+                          <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">¿Origen de Fondos?</label>
+                          <select 
+                            value={origenFondos}
+                            onChange={(e) => setOrigenFondos(e.target.value)}
+                            className="w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all text-sm"
+                          >
+                            <option value="Caja Principal">Caja Principal (Fondos por Rendir)</option>
+                            <option value="Casa Comercial">Casa Comercial (Nota de Crédito)</option>
+                          </select>
+                        </div>
+                      )}
+
+                      {transactionType === 'Nota de Crédito' && (
+                        <div className="pt-2 border-t border-slate-100">
+                          <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider text-purple-600">N° Factura Asociada (Obligatorio)</label>
+                          <input 
+                            type="text"
+                            value={facturaAsociada}
+                            onChange={(e) => setFacturaAsociada(e.target.value)}
+                            placeholder="Ej: 123456"
+                            className="w-full bg-purple-50 border border-purple-200 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-purple-500/20 text-sm font-bold"
+                          />
+                        </div>
+                      )}
+                      
+                      {(transactionType === 'Ingreso de Dinero' || transactionType === 'Saldo Inicial' || transactionType === 'Sin Respaldo') && (
+                        <div className="pt-2 border-t border-slate-100">
+                          <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Descripción / Motivo</label>
+                          <textarea 
+                            value={descripcion}
+                            onChange={(e) => setDescripcion(e.target.value)}
+                            placeholder="Describe el motivo de la transacción..."
+                            rows="2"
+                            className="w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 transition-all text-sm"
+                          ></textarea>
+                        </div>
+                      )}
+
                     </div>
 
                     <button 
                       onClick={handleSaveReceipt}
-                      disabled={isSaving}
-                      className={`mt-8 w-full py-4 rounded-xl font-bold flex items-center justify-center gap-3 text-lg ${isSaving ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-sm tracking-wide transition-colors'}`}
+                      disabled={isSaving || (transactionType === 'Nota de Crédito' && !facturaAsociada.trim())}
+                      className={`mt-8 w-full py-4 rounded-xl font-bold flex items-center justify-center gap-3 text-lg ${isSaving || (transactionType === 'Nota de Crédito' && !facturaAsociada.trim()) ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-sm tracking-wide transition-colors'}`}
                     >
                       {isSaving ? (
                         <><RefreshCcw className="h-6 w-6 animate-spin" /> Guardando...</>
@@ -491,17 +598,22 @@ function App() {
                       )}
                     </button>
                     {error && <div className="mt-4 text-red-500 text-sm font-medium text-center">{error}</div>}
-                    <button onClick={() => { setReviewData(null); setFile(null); }} className="w-full mt-4 py-2 text-slate-400 hover:text-slate-600 text-sm font-medium transition-colors">
-                      Cancelar y volver a escanear
+                    <button onClick={resetForm} className="w-full mt-4 py-2 text-slate-400 hover:text-slate-600 text-sm font-medium transition-colors">
+                      Cancelar
                     </button>
                   </div>
                 </div>
               ) : (
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden max-w-lg mx-auto bg-white">
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden max-w-lg mx-auto bg-white mt-4">
                 <div className="p-8">
-                  <div className="text-center mb-8">
-                    <h2 className="text-2xl font-bold text-slate-800 mb-2">Ingresar Nuevo Gasto</h2>
-                    <p className="text-slate-500 text-sm">Nuestra IA extraerá los datos automáticamente.</p>
+                  <div className="text-center mb-6 relative">
+                    <button onClick={() => setTransactionType(null)} className="absolute left-0 top-0 p-2 text-slate-400 hover:text-slate-700 bg-slate-50 rounded-full">
+                      <ArrowRight className="h-5 w-5 rotate-180" />
+                    </button>
+                    <h2 className="text-2xl font-bold text-slate-800 mb-1">{transactionType}</h2>
+                    <p className="text-slate-500 text-xs uppercase tracking-widest">
+                      {['Boleta', 'Factura', 'Nota de Crédito'].includes(transactionType) ? 'Sube el documento para extraer los datos' : 'Adjunta un comprobante (opcional)'}
+                    </p>
                   </div>
                   
                   <div className="w-full mb-5">
@@ -511,7 +623,7 @@ function App() {
                       onChange={(e) => setDepartment(e.target.value)}
                       className="w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all p-3.5 rounded-xl text-sm"
                     >
-                      <option value="">-- Selecciona el Departamento --</option>
+                      <option value="">-- Selecciona --</option>
                       <option value="Ventas">Ventas</option>
                       <option value="Gerencia">Gerencia</option>
                       <option value="Operaciones">Operaciones</option>
@@ -530,7 +642,7 @@ function App() {
                     />
                   </div>
 
-                  <label className={`upload-area w-full h-56 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all ${file ? 'border-[#38bdf8] bg-sky-50' : 'border-slate-300 hover:bg-slate-50'} ${isProcessing ? 'pulse-animation' : ''}`}>
+                  <label className={`upload-area w-full h-48 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all ${file ? 'border-[#38bdf8] bg-sky-50' : 'border-slate-300 hover:bg-slate-50'} ${isProcessing ? 'pulse-animation' : ''}`}>
                     {file ? (
                       <>
                         <CheckCircle className="h-12 w-12 text-[#38bdf8] mb-3" />
@@ -554,19 +666,26 @@ function App() {
                     />
                   </label>
 
+                  {['Saldo Inicial', 'Ingreso de Dinero', 'Sin Respaldo'].includes(transactionType) && !file && (
+                     <button onClick={() => {
+                        // Skip file upload completely
+                        setReviewData({
+                          rut_proveedor: '', fecha_boleta: new Date().toISOString().split('T')[0], monto_total: 0, iva: 0, link_drive: ''
+                        });
+                     }} className="w-full mt-3 py-2 text-slate-500 font-medium text-sm hover:text-slate-800 transition-colors">
+                        Continuar sin adjuntar comprobante &rarr;
+                     </button>
+                  )}
+
                   <button 
                     onClick={handleUpload}
                     disabled={!file || isProcessing}
-                    className={`mt-8 w-full py-4 rounded-xl font-bold flex items-center justify-center gap-3 text-lg ${!file ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition-colors shadow-sm font-bold tracking-wide'}`}
+                    className={`mt-6 w-full py-4 rounded-xl font-bold flex items-center justify-center gap-3 text-lg ${!file ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition-colors shadow-sm font-bold tracking-wide'}`}
                   >
                     {isProcessing ? (
-                      <>
-                        <RefreshCcw className="h-6 w-6 animate-spin" /> Procesando...
-                      </>
+                      <><RefreshCcw className="h-6 w-6 animate-spin" /> Procesando...</>
                     ) : (
-                      <>
-                        <Upload className="h-6 w-6" /> Enviar y Analizar
-                      </>
+                      <><Upload className="h-6 w-6" /> Enviar y Continuar</>
                     )}
                   </button>
                   {error && (
@@ -600,40 +719,30 @@ function App() {
               </div>
               )
             ) : (
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden max-w-lg mx-auto bg-white">
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden max-w-lg mx-auto bg-white mt-4">
                 <div className="bg-gradient-to-br from-[#38bdf8] to-[#0284c7] p-8 flex flex-col items-center text-white relative overflow-hidden">
                   <div className="absolute -right-10 -top-10 opacity-20">
                     <CheckCircle className="h-48 w-48" />
                   </div>
                   <CheckCircle className="h-16 w-16 mb-4 relative z-10" />
                   <h2 className="text-3xl font-bold mb-2 relative z-10">¡Éxito!</h2>
-                  <p className="text-sky-100 font-medium relative z-10 text-center">Gasto registrado en el CRM y Finanzas.</p>
+                  <p className="text-sky-100 font-medium relative z-10 text-center">Transacción registrada en el sistema.</p>
                 </div>
                 
                 <div className="p-8">
-                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-6 border-b border-slate-100 pb-2">Datos Extraídos por IA</h3>
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-6 border-b border-slate-100 pb-2">Resumen de Transacción</h3>
                   
                   <div className="space-y-3">
                     <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-xl border border-slate-100">
                       <div className="h-10 w-10 rounded-lg bg-white shadow-sm flex items-center justify-center">
-                        <Hash className="h-5 w-5 text-slate-400" />
+                        <FileText className="h-5 w-5 text-slate-400" />
                       </div>
                       <div>
-                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">RUT Proveedor</p>
-                        <p className="text-sm font-semibold text-slate-800">{result.rut_proveedor}</p>
+                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Tipo</p>
+                        <p className="text-sm font-semibold text-slate-800">{transactionType}</p>
                       </div>
                     </div>
                     
-                    <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-xl border border-slate-100">
-                      <div className="h-10 w-10 rounded-lg bg-white shadow-sm flex items-center justify-center">
-                        <Calendar className="h-5 w-5 text-slate-400" />
-                      </div>
-                      <div>
-                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Fecha Emisión</p>
-                        <p className="text-sm font-semibold text-slate-800">{result.fecha}</p>
-                      </div>
-                    </div>
-
                     <div className="flex items-center gap-4 p-5 bg-sky-50 rounded-xl border border-sky-100">
                       <div className="h-12 w-12 rounded-lg bg-white shadow-sm flex items-center justify-center">
                         <DollarSign className="h-6 w-6 text-[#38bdf8]" />
@@ -649,14 +758,14 @@ function App() {
                     onClick={resetForm}
                     className="mt-8 w-full py-4 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-xl font-bold transition-all flex items-center justify-center gap-2 border border-slate-200"
                   >
-                    Registrar otro gasto <ArrowRight className="h-4 w-4 text-slate-400" />
+                    Registrar otra transacción <ArrowRight className="h-4 w-4 text-slate-400" />
                   </button>
 
                   <button 
                     onClick={resetAll}
                     className="mt-3 w-full py-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-sm"
                   >
-                    <CheckCircle className="h-4 w-4" /> Finalizar Rendición
+                    <CheckCircle className="h-4 w-4" /> Volver al Inicio
                   </button>
                 </div>
               </div>

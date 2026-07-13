@@ -80,7 +80,8 @@ async def upload_receipt(
     userName: str = Form(...),
     userEmail: str = Form(...),
     department: str = Form(...),
-    costCenter: str = Form(...)
+    costCenter: str = Form(...),
+    skip_ocr: str = Form("false")
 ):
     try:
         # Generar ID único para este gasto
@@ -118,17 +119,19 @@ async def upload_receipt(
             
         # 2. Preprocesar imagen con OpenCV
         ocr_error = False
-        try:
-            optimized_filepath = os.path.join(BASE_DIR, f"opt_{temp_filename}")
-            preprocess_image(temp_filepath, optimized_filepath)
-            texto_extraido = extract_text_from_image(optimized_filepath)
-            datos_estructurados = parse_receipt_data(texto_extraido)
-            upload_target = optimized_filepath
-        except Exception as e:
-            print(f"OCR Error: {str(e)}")
-            ocr_error = True
-            datos_estructurados = {}
-            upload_target = temp_filepath
+        datos_estructurados = {}
+        upload_target = temp_filepath
+        
+        if skip_ocr.lower() != "true":
+            try:
+                optimized_filepath = os.path.join(BASE_DIR, f"opt_{temp_filename}")
+                preprocess_image(temp_filepath, optimized_filepath)
+                texto_extraido = extract_text_from_image(optimized_filepath)
+                datos_estructurados = parse_receipt_data(texto_extraido)
+                upload_target = optimized_filepath
+            except Exception as e:
+                print(f"OCR Error: {str(e)}")
+                ocr_error = True
         
         # 5. Subir la imagen procesada (u original) a Google Drive
         drive_link = upload_image_to_drive(upload_target, file.filename)
