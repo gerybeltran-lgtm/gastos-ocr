@@ -346,9 +346,11 @@ function App() {
     let fondosDisponibles = 0;
     let saldosAFavor = 0;
     let totalGastado = 0;
+    let ivaAcumulado = 0;
     
     filteredExpenses.forEach(exp => {
       const monto = parseFloat(exp.monto_total) || 0;
+      const iva = parseFloat(exp.iva) || 0;
       
       // Ingresos a la Caja Principal
       if (exp.tipo_transaccion === 'Saldo Inicial' || exp.tipo_transaccion === 'Ingreso de Dinero') {
@@ -360,12 +362,14 @@ function App() {
       else if (exp.tipo_transaccion === 'Nota de Crédito') {
         if (exp.estado !== 'Rechazado') {
           saldosAFavor += monto;
+          ivaAcumulado += iva;
         }
       }
       // Gastos (Boleta, Factura, Sin Respaldo)
       else {
         if (exp.estado !== 'Rechazado') {
            totalGastado += monto;
+           ivaAcumulado += iva;
            if (exp.origen_fondos === 'Caja Principal' || !exp.origen_fondos) {
               fondosDisponibles -= monto;
            } else if (exp.origen_fondos === 'Casa Comercial') {
@@ -375,12 +379,13 @@ function App() {
       }
     });
     
-    return { fondosDisponibles, saldosAFavor, totalGastado };
+    return { fondosDisponibles, saldosAFavor, totalGastado, ivaAcumulado };
   }, [filteredExpenses]);
 
   const totalSpent = finanzas.totalGastado;
   const fondosDisponibles = finanzas.fondosDisponibles;
   const saldosAFavor = finanzas.saldosAFavor;
+  const ivaAcumulado = finanzas.ivaAcumulado;
   const totalInvoices = filteredExpenses.length;
 
   const expensesByDept = useMemo(() => {
@@ -613,13 +618,16 @@ function App() {
                           <label className="block text-xs font-bold text-slate-500 mb-1 uppercase">Monto Total</label>
                           <input type="number" value={reviewData.monto_total} onChange={(e) => {
                               const val = parseFloat(e.target.value) || 0;
-                              setReviewData({...reviewData, monto_total: val, iva: Math.round(val * 0.19)});
+                              const applyIva = transactionType === 'Factura' || transactionType === 'Nota de Crédito';
+                              setReviewData({...reviewData, monto_total: val, iva: applyIva ? Math.round(val * 0.19) : 0});
                             }} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold text-sky-600" />
                         </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-500 mb-1 uppercase">IVA Calculado</label>
-                          <input type="number" value={reviewData.iva} onChange={(e) => setReviewData({...reviewData, iva: parseFloat(e.target.value) || 0})} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm" />
-                        </div>
+                        {(transactionType === 'Factura' || transactionType === 'Nota de Crédito') && (
+                          <div>
+                            <label className="block text-xs font-bold text-slate-500 mb-1 uppercase">IVA Calculado</label>
+                            <input type="number" value={reviewData.iva} onChange={(e) => setReviewData({...reviewData, iva: parseFloat(e.target.value) || 0})} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+                          </div>
+                        )}
                       </div>
 
                       <div>
@@ -746,15 +754,15 @@ function App() {
                     />
                   </label>
 
-                  {['Saldo Inicial', 'Ingreso de Dinero', 'Sin Respaldo', 'Boleta', 'Factura'].includes(transactionType) && !file && (
+                  {!file && (
                      <button onClick={() => {
                         // Skip file upload completely
                         setReviewData({
                           rut_proveedor: '', fecha_boleta: new Date().toISOString().split('T')[0], monto_total: 0, iva: 0, link_drive: ''
                         });
                      }} 
-                     disabled={['Boleta', 'Factura', 'Sin Respaldo'].includes(transactionType) && !origenFondos}
-                     className={`w-full mt-3 py-2 font-medium text-sm transition-colors ${(['Boleta', 'Factura', 'Sin Respaldo'].includes(transactionType) && !origenFondos) ? 'text-slate-300 cursor-not-allowed' : 'text-slate-500 hover:text-slate-800'}`}>
+                     disabled={(['Boleta', 'Factura', 'Sin Respaldo'].includes(transactionType) && !origenFondos) || (transactionType === 'Nota de Crédito' && !facturaAsociada.trim())}
+                     className={`w-full mt-3 py-2 font-medium text-sm transition-colors ${((['Boleta', 'Factura', 'Sin Respaldo'].includes(transactionType) && !origenFondos) || (transactionType === 'Nota de Crédito' && !facturaAsociada.trim())) ? 'text-slate-300 cursor-not-allowed' : 'text-slate-500 hover:text-slate-800'}`}>
                         Continuar sin adjuntar comprobante &rarr;
                      </button>
                   )}
@@ -874,9 +882,14 @@ function App() {
                       </div>
                     </div>
                     <p className="text-5xl font-black text-slate-800 relative z-10 tracking-tight">${totalSpent.toLocaleString('es-CL')}</p>
-                    <p className="text-sm text-sky-600 mt-3 font-medium relative z-10 flex items-center gap-2">
-                      <FileText className="h-4 w-4" /> {totalInvoices} boletas procesadas
-                    </p>
+                    <div className="flex flex-wrap gap-4 mt-3 relative z-10">
+                      <p className="text-sm text-sky-600 font-medium flex items-center gap-2">
+                        <FileText className="h-4 w-4" /> {totalInvoices} documentos
+                      </p>
+                      <p className="text-sm text-emerald-600 font-medium flex items-center gap-2">
+                        <DollarSign className="h-4 w-4" /> IVA Acum: ${ivaAcumulado.toLocaleString('es-CL')}
+                      </p>
+                    </div>
                   </div>
 
                   <div className="bg-white rounded-2xl border border-slate-200 shadow-sm bg-white p-6 flex flex-col justify-between">
