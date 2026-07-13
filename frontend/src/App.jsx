@@ -3,7 +3,7 @@ import { Camera, Upload, CheckCircle, FileText, RefreshCcw, DollarSign, Calendar
 import { useGoogleLogin } from '@react-oauth/google';
 import { jwtDecode } from 'jwt-decode';
 import axios from 'axios';
-const ADMIN_EMAILS = ["gerardo.beltran@e-voltage.cl", "jose.diaz@e-voltage.cl"];
+const ADMIN_EMAILS = ["gerardo.beltran@e-voltage.cl", "jose.diaz@e-voltage.cl", "jorge.salas@e-voltage.cl"];
 
 function App() {
   const [user, setUser] = useState(() => {
@@ -246,13 +246,18 @@ function App() {
         "Fecha Boleta", 
         "Monto Total", 
         "IVA", 
-        "Link Boleta"
+        "Link Boleta",
+        "Tipo Transacción",
+        "Origen Fondos",
+        "Factura Asociada",
+        "Descripción",
+        "Comentarios Revisor"
       ];
 
       // Formatear filas para exportar
       const dataRows = filteredExpenses.map(exp => [
         exp.id,
-        "Válido",
+        exp.estado || "Pendiente de Revisión",
         exp.fecha_captura || "",
         exp.usuario_nombre || "",
         exp.usuario_email || "",
@@ -262,7 +267,12 @@ function App() {
         exp.fecha_boleta || "",
         exp.monto_total || 0,
         exp.iva || 0,
-        exp.link_drive || ""
+        exp.link_drive || "",
+        exp.tipo_transaccion || "Boleta",
+        exp.origen_fondos || "Caja Principal",
+        exp.factura_asociada || "",
+        exp.descripcion || "",
+        exp.comentarios_revisor || ""
       ]);
 
       const rows = [headers, ...dataRows];

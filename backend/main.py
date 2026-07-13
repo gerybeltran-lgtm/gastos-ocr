@@ -28,7 +28,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 from procesador_gastos import preprocess_image, extract_text_from_image, parse_receipt_data
 from google_services import upload_image_to_drive, overwrite_sheets
-from typing import List
+from typing import List, Optional
 
 app = FastAPI(title="API Rendición de Gastos")
 
@@ -46,6 +46,12 @@ class EditExpenseRequest(BaseModel):
     rut_proveedor: str
     fecha_boleta: str
     monto_total: float
+    tipo_transaccion: Optional[str] = "Boleta"
+    origen_fondos: Optional[str] = "Caja Principal"
+    estado: Optional[str] = "Pendiente de Revisión"
+    factura_asociada: Optional[str] = ""
+    comentarios_revisor: Optional[str] = ""
+    descripcion: Optional[str] = ""
 
 class SaveExpenseRequest(BaseModel):
     id: str
@@ -58,6 +64,12 @@ class SaveExpenseRequest(BaseModel):
     monto_total: float
     iva: float
     link_drive: str
+    tipo_transaccion: Optional[str] = "Boleta"
+    origen_fondos: Optional[str] = "Caja Principal"
+    estado: Optional[str] = "Pendiente de Revisión"
+    factura_asociada: Optional[str] = ""
+    comentarios_revisor: Optional[str] = ""
+    descripcion: Optional[str] = ""
 
 class ExportRequest(BaseModel):
     rows: List[list]
@@ -184,9 +196,15 @@ async def save_receipt(data: SaveExpenseRequest):
             "monto_total": data.monto_total,
             "iva": data.iva,
             "link_drive": data.link_drive,
-            "fecha_captura": fecha_captura
+            "fecha_captura": fecha_captura,
+            "tipo_transaccion": data.tipo_transaccion,
+            "origen_fondos": data.origen_fondos,
+            "estado": data.estado,
+            "factura_asociada": data.factura_asociada,
+            "comentarios_revisor": data.comentarios_revisor,
+            "descripcion": data.descripcion
         }
-        supabase.table("gastos").insert(supabase_data).execute()
+        supabase.table("transacciones").insert(supabase_data).execute()
         
         return {"success": True, "data": supabase_data}
     except Exception as e:
@@ -206,7 +224,7 @@ async def export_sheets(data: ExportRequest):
 async def history(email: str):
     try:
         # Obtenemos historial directamente de Supabase (CRM)
-        response = supabase.table("gastos").select("*").eq("usuario_email", email).order("fecha_captura", desc=True).execute()
+        response = supabase.table("transacciones").select("*").eq("usuario_email", email).order("fecha_captura", desc=True).execute()
         return {"success": True, "data": response.data}
     except Exception as e:
         print(f"Error obteniendo historial: {str(e)}")
@@ -214,12 +232,12 @@ async def history(email: str):
 
 @app.get("/admin/history")
 async def admin_history(email: str):
-    ADMIN_EMAILS = ["gerardo.beltran@e-voltage.cl", "jose.diaz@e-voltage.cl"]
+    ADMIN_EMAILS = ["gerardo.beltran@e-voltage.cl", "jose.diaz@e-voltage.cl", "jorge.salas@e-voltage.cl"]
     if email.lower() not in ADMIN_EMAILS:
         return {"success": False, "error": "Acceso denegado"}
     try:
         # Obtenemos TODOS los gastos para el panel admin
-        response = supabase.table("gastos").select("*").order("fecha_captura", desc=True).execute()
+        response = supabase.table("transacciones").select("*").order("fecha_captura", desc=True).execute()
         return {"success": True, "data": response.data}
     except Exception as e:
         print(f"Error obteniendo historial admin: {str(e)}")
@@ -229,7 +247,7 @@ async def admin_history(email: str):
 async def delete_expense(expense_id: str):
     try:
         # 1. Eliminar en Supabase
-        supabase.table("gastos").delete().eq("id", expense_id).execute()
+        supabase.table("transacciones").delete().eq("id", expense_id).execute()
         return {"success": True}
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -238,7 +256,7 @@ async def delete_expense(expense_id: str):
 async def edit_expense(expense_id: str, data: EditExpenseRequest):
     try:
         # Obtener gasto original de Supabase
-        response = supabase.table("gastos").select("*").eq("id", expense_id).execute()
+        response = supabase.table("transacciones").select("*").eq("id", expense_id).execute()
         if not response.data:
             raise HTTPException(status_code=404, detail="Gasto no encontrado")
             
@@ -255,9 +273,15 @@ async def edit_expense(expense_id: str, data: EditExpenseRequest):
             "rut_proveedor": data.rut_proveedor,
             "fecha_boleta": data.fecha_boleta,
             "monto_total": nuevo_monto,
-            "iva": nuevo_iva
+            "iva": nuevo_iva,
+            "tipo_transaccion": data.tipo_transaccion,
+            "origen_fondos": data.origen_fondos,
+            "estado": data.estado,
+            "factura_asociada": data.factura_asociada,
+            "comentarios_revisor": data.comentarios_revisor,
+            "descripcion": data.descripcion
         }
-        supabase.table("gastos").update(update_data).eq("id", expense_id).execute()
+        supabase.table("transacciones").update(update_data).eq("id", expense_id).execute()
         
         return {"success": True}
     except Exception as e:
