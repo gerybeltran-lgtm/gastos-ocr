@@ -934,31 +934,36 @@ function App() {
               ) : (
                 <>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {/* Total a Rendir */}
                   <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex items-center gap-5">
-                    <div className="h-12 w-12 bg-emerald-50 text-emerald-500 rounded-xl flex items-center justify-center">
+                    <div className="h-12 w-12 bg-sky-50 text-[#38bdf8] rounded-xl flex items-center justify-center">
                       <Wallet className="h-6 w-6" />
                     </div>
                     <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Caja Principal (Por Rendir)</p>
-                      <p className="text-2xl font-black text-slate-800">${fondosDisponibles.toLocaleString('es-CL')}</p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total a Rendir</p>
+                      <p className="text-2xl font-black text-slate-800">${(fondosDisponibles > 0 ? fondosDisponibles : 0).toLocaleString('es-CL')}</p>
                     </div>
                   </div>
+                  
+                  {/* Casa Comercial */}
                   <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex items-center gap-5">
-                    <div className="h-12 w-12 bg-rose-50 text-rose-500 rounded-xl flex items-center justify-center">
+                    <div className="h-12 w-12 bg-emerald-50 text-emerald-500 rounded-xl flex items-center justify-center">
                       <DollarSign className="h-6 w-6" />
                     </div>
                     <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Gastado</p>
-                      <p className="text-2xl font-black text-slate-800">${totalSpent.toLocaleString('es-CL')}</p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Casa Comercial</p>
+                      <p className="text-2xl font-black text-slate-800">${saldosAFavor.toLocaleString('es-CL')}</p>
                     </div>
                   </div>
+                  
+                  {/* Por Recuperar por Liquidación */}
                   <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex items-center gap-5">
-                    <div className="h-12 w-12 bg-slate-50 text-slate-400 rounded-xl flex items-center justify-center">
+                    <div className="h-12 w-12 bg-amber-50 text-amber-500 rounded-xl flex items-center justify-center">
                       <FileText className="h-6 w-6" />
                     </div>
                     <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Mis Registros</p>
-                      <p className="text-2xl font-black text-slate-800">{totalInvoices} <span className="text-xs font-normal text-slate-400">ítems</span></p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1" title="Lo que la empresa te debe reembolsar">Por Recuperar por Liquidación</p>
+                      <p className="text-2xl font-black text-slate-800">${(fondosDisponibles < 0 ? Math.abs(fondosDisponibles) : 0).toLocaleString('es-CL')}</p>
                     </div>
                   </div>
                 </div>
