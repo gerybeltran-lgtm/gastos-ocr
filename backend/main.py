@@ -1,5 +1,5 @@
 import os
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
 import shutil
@@ -7,6 +7,62 @@ import uuid
 from pydantic import BaseModel
 from supabase import create_client, Client
 import fitz  # PyMuPDF
+
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+def send_notification_email(data: dict):
+    sender_email = "notificacionesevoltage@gmail.com"
+    app_password = "xceagphwulzjtwge"
+    receiver_emails = ["gerardo.beltran@e-voltage.cl", "jose.diaz@e-voltage.cl", "jorge.salas@e-voltage.cl"]
+
+    subject = f"Nueva Rendición: {data.get('tipo_transaccion', 'Desconocido')} de {data.get('usuario_nombre', 'Usuario')}"
+    
+    html_content = f"""
+    <html>
+      <body style="font-family: Arial, sans-serif; color: #333;">
+        <div style="max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+            <div style="background-color: #38bdf8; padding: 20px; text-align: center; color: white;">
+                <h2 style="margin: 0;">Nueva Transacción Registrada</h2>
+            </div>
+            <div style="padding: 30px; background-color: #f8fafc;">
+                <p><strong>Usuario:</strong> {data.get('usuario_nombre')}</p>
+                <p><strong>Tipo:</strong> {data.get('tipo_transaccion')} (Estado: Pendiente)</p>
+                <p><strong>Monto:</strong> ${float(data.get('monto_total', 0)):,.0f}</p>
+                <p><strong>Centro de Costo:</strong> {data.get('centro_costo', '-')}</p>
+                <p><strong>Proveedor:</strong> {data.get('rut_proveedor', '-')}</p>
+                <p><strong>Fecha:</strong> {data.get('fecha_boleta', '-')}</p>
+                <p><strong>Motivo / Descripción:</strong> {data.get('descripcion', '-')}</p>
+                <br>
+                <a href="{data.get('link_drive', '#')}" style="display: inline-block; padding: 12px 24px; background-color: #10b981; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">Ver Documento Respaldo</a>
+                <br><br>
+                <p style="font-size: 12px; color: #64748b;">Para aprobar o rechazar esta solicitud, ingrese al Panel de Administrador en la plataforma DealFlow Gastos.</p>
+            </div>
+        </div>
+      </body>
+    </html>
+    """
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = f"E-Voltage Notificaciones <{sender_email}>"
+    msg["To"] = ", ".join(receiver_emails)
+    
+    part = MIMEText(html_content, "html")
+    msg.attach(part)
+    
+    try:
+        server = smtplib.SMTP_SSL("smtp.gmail.com", 465)
+        server.login(sender_email, app_password)
+        server.sendmail(sender_email, receiver_emails, msg.as_string())
+        server.quit()
+        print("Correo enviado exitosamente a los administradores.")
+    except Exception as e:
+        print(f"Error enviando correo: {str(e)}")
+
+# Fin importaciones correo
+
 
 # Configurar credenciales de Google antes de importar el procesador
 import json
@@ -188,7 +244,7 @@ async def upload_receipt(
         return {"success": False, "error": str(e)}
 
 @app.post("/save-receipt")
-async def save_receipt(data: SaveExpenseRequest):
+async def save_receipt(data: SaveExpenseRequest, background_tasks: BackgroundTasks):
     try:
         fecha_captura = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
@@ -213,6 +269,9 @@ async def save_receipt(data: SaveExpenseRequest):
             "descripcion": data.descripcion
         }
         supabase.table("transacciones").insert(supabase_data).execute()
+        
+        # Agregar el envío de correo como tarea en segundo plano
+        background_tasks.add_task(send_notification_email, supabase_data)
         
         return {"success": True, "data": supabase_data}
     except Exception as e:
