@@ -13,8 +13,8 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 def send_notification_email(data: dict):
-    sender_email = "notificacionesevoltage@gmail.com"
-    app_password = "xceagphwulzjtwge"
+    sender_email = os.environ.get("SENDER_EMAIL", "notificacionesevoltage@gmail.com")
+    app_password = os.environ.get("EMAIL_PASSWORD", "")
     receiver_emails = ["gerardo.beltran@e-voltage.cl", "jose.diaz@e-voltage.cl", "jorge.salas@e-voltage.cl"]
 
     subject = f"Nueva Rendición: {data.get('tipo_transaccion', 'Desconocido')} de {data.get('usuario_nombre', 'Usuario')}"
