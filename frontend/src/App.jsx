@@ -22,8 +22,10 @@ function App() {
   const [activeTab, setActiveTab] = useState('scanner'); // 'scanner' | 'history' | 'admin'
   
   // Scanner States
+  const [adminStatusFilter, setAdminStatusFilter] = useState('all');
+  const [adminSearchQuery, setAdminSearchQuery] = useState('');
   const [transactionType, setTransactionType] = useState(null);
-  const [origenFondos, setOrigenFondos] = useState('Caja Principal');
+  const [origenFondos, setOrigenFondos] = useState('');
   const [facturaAsociada, setFacturaAsociada] = useState('');
   const [descripcion, setDescripcion] = useState('');
   const [file, setFile] = useState(null);
@@ -157,7 +159,7 @@ function App() {
     setReviewData(null);
     setError(null);
     setTransactionType(null);
-    setOrigenFondos('Caja Principal');
+    setOrigenFondos('');
     setFacturaAsociada('');
     setDescripcion('');
   };
@@ -408,7 +410,7 @@ function App() {
           <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
             
             {/* Left: App Branding (DealFlow Style) */}
-            <div className="flex items-center gap-3">
+            <button onClick={goHome} className="flex items-center gap-3 hover:opacity-80 transition-opacity text-left outline-none" title="Volver al Inicio">
               {/* Yellow DealFlow Icon */}
               <img src="/icon-192.png" alt="DealFlow Gastos" className="shrink-0 h-10 w-10 rounded-[10px] shadow-sm" />
               
@@ -419,7 +421,7 @@ function App() {
                 </div>
                 <p className="text-[10px] uppercase tracking-widest text-[#94a3b8] font-bold mt-1 leading-none">Plataforma de Rendiciones</p>
               </div>
-            </div>
+            </button>
 
             {/* Right: Company Logo Pill & User Profile */}
             <div className="flex items-center gap-5 shrink-0">
@@ -606,32 +608,22 @@ function App() {
                       </div>
 
                       {/* Campos Dinámicos según tipo de transacción */}
-                      {(transactionType === 'Boleta' || transactionType === 'Factura') && (
+                      {(transactionType === 'Boleta' || transactionType === 'Factura' || transactionType === 'Sin Respaldo') && (
                         <div className="pt-2 border-t border-slate-100">
-                          <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">¿Origen de Fondos?</label>
+                          <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">¿Origen del Pago?</label>
                           <select 
                             value={origenFondos}
                             onChange={(e) => setOrigenFondos(e.target.value)}
-                            className="w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all text-sm"
+                            className="w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all text-sm font-semibold text-slate-700"
                           >
-                            <option value="Caja Principal">Caja Principal (Fondos por Rendir)</option>
-                            <option value="Casa Comercial">Casa Comercial (Nota de Crédito)</option>
+                            <option value="" disabled>Selecciona el origen del pago...</option>
+                            <option value="Caja Principal">Fondos por Rendir (Cargo a Caja Principal)</option>
+                            <option value="Casa Comercial">Nota de Crédito (Cargo a Casa Comercial)</option>
                           </select>
                         </div>
                       )}
 
-                      {transactionType === 'Nota de Crédito' && (
-                        <div className="pt-2 border-t border-slate-100">
-                          <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider text-purple-600">N° Factura Asociada (Obligatorio)</label>
-                          <input 
-                            type="text"
-                            value={facturaAsociada}
-                            onChange={(e) => setFacturaAsociada(e.target.value)}
-                            placeholder="Ej: 123456"
-                            className="w-full bg-purple-50 border border-purple-200 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-purple-500/20 text-sm font-bold"
-                          />
-                        </div>
-                      )}
+
                       
                       {(transactionType === 'Ingreso de Dinero' || transactionType === 'Saldo Inicial' || transactionType === 'Sin Respaldo') && (
                         <div className="pt-2 border-t border-slate-100">
@@ -650,8 +642,8 @@ function App() {
 
                     <button 
                       onClick={handleSaveReceipt}
-                      disabled={isSaving || (transactionType === 'Nota de Crédito' && !facturaAsociada.trim())}
-                      className={`mt-8 w-full py-4 rounded-xl font-bold flex items-center justify-center gap-3 text-lg ${isSaving || (transactionType === 'Nota de Crédito' && !facturaAsociada.trim()) ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-sm tracking-wide transition-colors'}`}
+                      disabled={isSaving || (transactionType === 'Nota de Crédito' && !facturaAsociada.trim()) || (['Boleta', 'Factura', 'Sin Respaldo'].includes(transactionType) && !origenFondos)}
+                      className={`mt-8 w-full py-4 rounded-xl font-bold flex items-center justify-center gap-3 text-lg ${isSaving || (transactionType === 'Nota de Crédito' && !facturaAsociada.trim()) || (['Boleta', 'Factura', 'Sin Respaldo'].includes(transactionType) && !origenFondos) ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-sm tracking-wide transition-colors'}`}
                     >
                       {isSaving ? (
                         <><RefreshCcw className="h-6 w-6 animate-spin" /> Guardando...</>
@@ -693,7 +685,7 @@ function App() {
                     </select>
                   </div>
 
-                  <div className="w-full mb-8">
+                  <div className="w-full mb-6">
                     <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Centro de Costo</label>
                     <input 
                       type="text"
@@ -703,6 +695,19 @@ function App() {
                       className="w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all p-3.5 rounded-xl text-sm font-mono uppercase"
                     />
                   </div>
+
+                  {transactionType === 'Nota de Crédito' && (
+                    <div className="w-full mb-6">
+                      <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider text-purple-600">N° Factura Asociada (Obligatorio)</label>
+                      <input 
+                        type="text"
+                        value={facturaAsociada}
+                        onChange={(e) => setFacturaAsociada(e.target.value)}
+                        placeholder="Ej: 123456"
+                        className="w-full bg-purple-50 border border-purple-200 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-purple-500/20 text-sm font-bold"
+                      />
+                    </div>
+                  )}
 
                   <label className={`upload-area w-full h-48 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all ${file ? 'border-[#38bdf8] bg-sky-50' : 'border-slate-300 hover:bg-slate-50'} ${isProcessing ? 'pulse-animation' : ''}`}>
                     {file ? (
@@ -728,7 +733,7 @@ function App() {
                     />
                   </label>
 
-                  {['Saldo Inicial', 'Ingreso de Dinero', 'Sin Respaldo'].includes(transactionType) && !file && (
+                  {['Saldo Inicial', 'Ingreso de Dinero', 'Sin Respaldo', 'Boleta', 'Factura'].includes(transactionType) && !file && (
                      <button onClick={() => {
                         // Skip file upload completely
                         setReviewData({
@@ -741,8 +746,8 @@ function App() {
 
                   <button 
                     onClick={handleUpload}
-                    disabled={!file || isProcessing}
-                    className={`mt-6 w-full py-4 rounded-xl font-bold flex items-center justify-center gap-3 text-lg ${!file ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition-colors shadow-sm font-bold tracking-wide'}`}
+                    disabled={!file || isProcessing || (transactionType === 'Nota de Crédito' && !facturaAsociada.trim())}
+                    className={`mt-6 w-full py-4 rounded-xl font-bold flex items-center justify-center gap-3 text-lg ${(!file || (transactionType === 'Nota de Crédito' && !facturaAsociada.trim())) ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition-colors shadow-sm font-bold tracking-wide'}`}
                   >
                     {isProcessing ? (
                       <><RefreshCcw className="h-6 w-6 animate-spin" /> Procesando...</>
