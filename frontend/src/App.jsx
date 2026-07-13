@@ -173,6 +173,13 @@ function App() {
     setDepartment("");
   };
 
+  const goHome = () => {
+    setActiveTab('scanner');
+    setTransactionType(null);
+    resetAll();
+    resetForm();
+  };
+
   const fetchHistory = async () => {
     if (!user) return;
     setLoadingHistory(true);
