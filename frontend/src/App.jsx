@@ -198,6 +198,26 @@ function App() {
     }
   }, [activeTab, user]);
 
+  const handleUpdateStatus = async (id, nuevoEstado) => {
+    let comentarios = "";
+    if (nuevoEstado === 'Rechazado') {
+      comentarios = window.prompt("Por favor, ingresa el motivo del rechazo:");
+      if (comentarios === null) return; // Cancelado
+    }
+    
+    try {
+      await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/update-expense-status`, {
+        id,
+        estado: nuevoEstado,
+        comentarios_revisor: comentarios
+      });
+      fetchHistory();
+    } catch (err) {
+      console.error("Error updating status", err);
+      alert("Hubo un error al actualizar el estado");
+    }
+  };
+
   const handleDelete = async (id) => {
     if (window.confirm("¿Estás seguro de que quieres eliminar este gasto?")) {
       try {
@@ -312,8 +332,46 @@ function App() {
     return matchDept && matchCC && matchUser;
   });
 
-  // KPIs
-  const totalSpent = filteredExpenses.reduce((acc, exp) => acc + (parseFloat(exp.monto_total) || 0), 0);
+  // KPIs Financieros
+  const finanzas = useMemo(() => {
+    let fondosDisponibles = 0;
+    let saldosAFavor = 0;
+    let totalGastado = 0;
+    
+    filteredExpenses.forEach(exp => {
+      const monto = parseFloat(exp.monto_total) || 0;
+      
+      // Ingresos a la Caja Principal
+      if (exp.tipo_transaccion === 'Saldo Inicial' || exp.tipo_transaccion === 'Ingreso de Dinero') {
+        if (exp.estado !== 'Rechazado') {
+          fondosDisponibles += monto;
+        }
+      } 
+      // Notas de Crédito
+      else if (exp.tipo_transaccion === 'Nota de Crédito') {
+        if (exp.estado !== 'Rechazado') {
+          saldosAFavor += monto;
+        }
+      }
+      // Gastos (Boleta, Factura, Sin Respaldo)
+      else {
+        if (exp.estado !== 'Rechazado') {
+           totalGastado += monto;
+           if (exp.origen_fondos === 'Caja Principal' || !exp.origen_fondos) {
+              fondosDisponibles -= monto;
+           } else if (exp.origen_fondos === 'Casa Comercial') {
+              saldosAFavor -= monto;
+           }
+        }
+      }
+    });
+    
+    return { fondosDisponibles, saldosAFavor, totalGastado };
+  }, [filteredExpenses]);
+
+  const totalSpent = finanzas.totalGastado;
+  const fondosDisponibles = finanzas.fondosDisponibles;
+  const saldosAFavor = finanzas.saldosAFavor;
   const totalInvoices = filteredExpenses.length;
 
   const expensesByDept = useMemo(() => {
@@ -863,23 +921,32 @@ function App() {
                 </>
               ) : (
                 <>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="bg-white rounded-2xl border border-slate-200 shadow-sm bg-white p-6 flex items-center gap-5">
-                    <div className="h-14 w-14 bg-sky-50 border border-sky-100 text-[#38bdf8] rounded-2xl flex items-center justify-center shadow-sm">
-                      <DollarSign className="h-7 w-7" />
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex items-center gap-5">
+                    <div className="h-12 w-12 bg-emerald-50 text-emerald-500 rounded-xl flex items-center justify-center">
+                      <Wallet className="h-6 w-6" />
                     </div>
                     <div>
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Mi Gasto Total</p>
-                      <p className="text-3xl font-black text-slate-800">${totalSpent.toLocaleString('es-CL')}</p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Caja Principal (Por Rendir)</p>
+                      <p className="text-2xl font-black text-slate-800">${fondosDisponibles.toLocaleString('es-CL')}</p>
                     </div>
                   </div>
-                  <div className="bg-white rounded-2xl border border-slate-200 shadow-sm bg-white p-6 flex items-center gap-5">
-                    <div className="h-14 w-14 bg-slate-50 border border-slate-100 text-slate-400 rounded-2xl flex items-center justify-center shadow-sm">
-                      <FileText className="h-7 w-7" />
+                  <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex items-center gap-5">
+                    <div className="h-12 w-12 bg-rose-50 text-rose-500 rounded-xl flex items-center justify-center">
+                      <DollarSign className="h-6 w-6" />
                     </div>
                     <div>
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Mis Boletas</p>
-                      <p className="text-3xl font-black text-slate-800">{totalInvoices} <span className="text-base font-normal text-slate-400">registradas</span></p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Gastado</p>
+                      <p className="text-2xl font-black text-slate-800">${totalSpent.toLocaleString('es-CL')}</p>
+                    </div>
+                  </div>
+                  <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex items-center gap-5">
+                    <div className="h-12 w-12 bg-slate-50 text-slate-400 rounded-xl flex items-center justify-center">
+                      <FileText className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Mis Registros</p>
+                      <p className="text-2xl font-black text-slate-800">{totalInvoices} <span className="text-xs font-normal text-slate-400">ítems</span></p>
                     </div>
                   </div>
                 </div>
@@ -1006,11 +1073,12 @@ function App() {
                     <table className="w-full text-left border-collapse w-full text-left border-collapse">
                       <thead>
                         <tr>
-                          <th className="p-5 text-xs">Proyecto / Fecha</th>
+                          <th className="p-5 text-xs">Transacción / Fecha</th>
                           {activeTab === 'admin' && <th className="p-5 text-xs">Usuario / Depto</th>}
-                          <th className="p-5 text-xs">Proveedor</th>
+                          <th className="p-5 text-xs">Proveedor / Proyecto</th>
+                          <th className="p-5 text-xs text-center">Estado</th>
                           <th className="p-5 text-xs text-right">Monto</th>
-                          <th className="p-5 text-xs text-center">Boleta</th>
+                          <th className="p-5 text-xs text-center">Resp.</th>
                           <th className="p-5 text-xs text-right">Acciones</th>
                         </tr>
                       </thead>
@@ -1018,8 +1086,8 @@ function App() {
                         {filteredExpenses.map((exp) => (
                           <tr key={exp.id} className="group">
                             <td className="p-5">
-                              <span className="bg-sky-50 text-[#0284c7] py-1.5 px-3 rounded-lg text-xs font-mono font-bold border border-sky-100 inline-block mb-1.5">
-                                {exp.centro_costo}
+                              <span className="bg-sky-50 text-[#0284c7] py-1.5 px-3 rounded-lg text-xs font-bold border border-sky-100 inline-block mb-1.5">
+                                {exp.tipo_transaccion || 'Boleta'}
                               </span>
                               <div className="text-[11px] text-slate-500 font-medium flex items-center gap-1.5">
                                 <Calendar className="h-3 w-3" /> {exp.fecha_captura?.substring(0,10)}
@@ -1033,12 +1101,21 @@ function App() {
                             )}
                             <td className="p-5">
                               <p className="text-sm font-semibold text-slate-700">{exp.rut_proveedor}</p>
-                              <p className="text-xs text-slate-400 mt-0.5">{exp.fecha_boleta}</p>
+                              <p className="text-xs text-slate-400 mt-0.5 font-mono">{exp.centro_costo}</p>
+                            </td>
+                            <td className="p-5 text-center">
+                              <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                exp.estado === 'Aprobado' ? 'bg-emerald-100 text-emerald-700' :
+                                exp.estado === 'Rechazado' ? 'bg-rose-100 text-rose-700' :
+                                'bg-amber-100 text-amber-700'
+                              }`}>
+                                {exp.estado || 'Pendiente'}
+                              </span>
                             </td>
                             <td className="p-5 text-sm font-bold text-slate-800 text-right">${parseInt(exp.monto_total || 0).toLocaleString('es-CL')}</td>
                             <td className="p-5 text-center">
                               {exp.link_drive ? (
-                                <a href={exp.link_drive} target="_blank" rel="noreferrer" className="inline-flex p-2.5 bg-slate-50 text-[#38bdf8] hover:bg-sky-50 rounded-xl transition-all hover:scale-110 border border-slate-200 shadow-sm" title="Ver Boleta">
+                                <a href={exp.link_drive} target="_blank" rel="noreferrer" className="inline-flex p-2 bg-slate-50 text-[#38bdf8] hover:bg-sky-50 rounded-lg transition-all border border-slate-200" title="Ver Respaldo">
                                   <FileText className="h-4 w-4" />
                                 </a>
                               ) : (
@@ -1046,21 +1123,33 @@ function App() {
                               )}
                             </td>
                             <td className="p-5 text-right">
-                              <div className="flex items-center justify-end gap-2">
+                              <div className="flex items-center justify-end gap-1.5">
+                                {activeTab === 'admin' && exp.estado === 'Pendiente' && (
+                                  <>
+                                    <button onClick={() => handleUpdateStatus(exp.id, 'Aprobado')} className="p-1.5 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-all" title="Aprobar">
+                                      <CheckCircle className="h-4 w-4" />
+                                    </button>
+                                    <button onClick={() => handleUpdateStatus(exp.id, 'Rechazado')} className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-all" title="Rechazar">
+                                      <X className="h-4 w-4" />
+                                    </button>
+                                  </>
+                                )}
                                 <button 
                                   onClick={() => startEdit(exp)}
-                                  className="p-2 text-slate-400 hover:text-[#38bdf8] hover:bg-sky-50 rounded-lg transition-all"
+                                  className="p-1.5 text-slate-400 hover:text-[#38bdf8] hover:bg-sky-50 rounded-lg transition-all"
                                   title="Editar Gasto"
                                 >
                                   <Edit2 className="h-4 w-4" />
                                 </button>
-                                <button 
-                                  onClick={() => handleDelete(exp.id)}
-                                  className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
-                                  title="Eliminar Gasto"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </button>
+                                {activeTab === 'admin' && (
+                                  <button 
+                                    onClick={() => handleDelete(exp.id)}
+                                    className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
+                                    title="Eliminar Gasto"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                )}
                               </div>
                             </td>
                           </tr>

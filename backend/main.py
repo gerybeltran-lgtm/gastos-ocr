@@ -74,6 +74,11 @@ class SaveExpenseRequest(BaseModel):
 class ExportRequest(BaseModel):
     rows: List[list]
 
+class UpdateStatusRequest(BaseModel):
+    id: str
+    estado: str
+    comentarios_revisor: Optional[str] = ""
+
 @app.post("/upload-receipt")
 async def upload_receipt(
     file: UploadFile = File(...),
@@ -244,6 +249,18 @@ async def admin_history(email: str):
         return {"success": True, "data": response.data}
     except Exception as e:
         print(f"Error obteniendo historial admin: {str(e)}")
+        return {"success": False, "error": str(e)}
+
+@app.post("/update-expense-status")
+async def update_expense_status(data: UpdateStatusRequest):
+    try:
+        response = supabase.table("transacciones").update({
+            "estado": data.estado,
+            "comentarios_revisor": data.comentarios_revisor
+        }).eq("id", data.id).execute()
+        return {"success": True, "data": response.data}
+    except Exception as e:
+        print(f"Error updating status: {str(e)}")
         return {"success": False, "error": str(e)}
 
 @app.delete("/expense/{expense_id}")
