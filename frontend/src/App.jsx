@@ -288,7 +288,7 @@ function App() {
         "Link Boleta",
         "Tipo Transacción",
         "Origen Fondos",
-        "Factura Asociada",
+        "N° Doc / Fact. Asociada",
         "Descripción",
         "Comentarios Revisor"
       ];
@@ -588,16 +588,24 @@ function App() {
                     </div>
                     
                     <div className="space-y-5">
-                      {/* Mostrar RUT y Fecha siempre */}
+                      {/* Mostrar RUT y N° Documento */}
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <label className="block text-xs font-bold text-slate-500 mb-1 uppercase">RUT Proveedor</label>
-                          <input type="text" value={reviewData.rut_proveedor} onChange={(e) => setReviewData({...reviewData, rut_proveedor: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+                          <input type="text" value={reviewData.rut_proveedor} onChange={(e) => setReviewData({...reviewData, rut_proveedor: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="Opcional" />
                         </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-500 mb-1 uppercase">Fecha</label>
-                          <input type="date" value={reviewData.fecha_boleta} onChange={(e) => setReviewData({...reviewData, fecha_boleta: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm" />
-                        </div>
+                        {transactionType !== 'Nota de Crédito' && (
+                          <div>
+                            <label className="block text-xs font-bold text-slate-500 mb-1 uppercase">N° Documento</label>
+                            <input type="text" value={facturaAsociada} onChange={(e) => setFacturaAsociada(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="Opcional" />
+                          </div>
+                        )}
+                        {transactionType === 'Nota de Crédito' && (
+                          <div>
+                            <label className="block text-xs font-bold text-slate-500 mb-1 uppercase text-purple-600">Factura Asociada</label>
+                            <input type="text" value={facturaAsociada} onChange={(e) => setFacturaAsociada(e.target.value)} className="w-full bg-purple-50 border border-purple-200 rounded-lg px-3 py-2 text-sm font-bold" />
+                          </div>
+                        )}
                       </div>
                       
                       <div className="grid grid-cols-2 gap-4">
@@ -614,22 +622,21 @@ function App() {
                         </div>
                       </div>
 
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 mb-1 uppercase">Fecha</label>
+                        <input type="date" value={reviewData.fecha_boleta} onChange={(e) => setReviewData({...reviewData, fecha_boleta: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+                      </div>
 
-
-
-                      
-                      {(transactionType === 'Ingreso de Dinero' || transactionType === 'Saldo Inicial' || transactionType === 'Sin Respaldo') && (
-                        <div className="pt-2 border-t border-slate-100">
-                          <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Descripción / Motivo</label>
-                          <textarea 
-                            value={descripcion}
-                            onChange={(e) => setDescripcion(e.target.value)}
-                            placeholder="Describe el motivo de la transacción..."
-                            rows="2"
-                            className="w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 transition-all text-sm"
-                          ></textarea>
-                        </div>
-                      )}
+                      <div className="pt-2 border-t border-slate-100">
+                        <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Observaciones</label>
+                        <textarea 
+                          value={descripcion}
+                          onChange={(e) => setDescripcion(e.target.value)}
+                          placeholder="Opcional. Describe el motivo o detalles del gasto..."
+                          rows="2"
+                          className="w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 transition-all text-sm"
+                        ></textarea>
+                      </div>
 
                     </div>
 
