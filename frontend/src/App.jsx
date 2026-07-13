@@ -184,11 +184,21 @@ function App() {
     if (!user) return;
     setLoadingHistory(true);
     try {
-      const endpoint = activeTab === 'admin' 
-        ? `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/admin/history?email=${encodeURIComponent(user.email)}`
-        : `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/history?email=${encodeURIComponent(user.email)}`;
-        
-      const response = await axios.get(endpoint);
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+      let response;
+      if (activeTab === 'admin') {
+        // El backend exige que el email coincida tanto en query param como en header X-User-Email
+        response = await axios.get(
+          `${API_URL}/admin/history?email=${encodeURIComponent(user.email)}`,
+          { headers: { 'X-User-Email': user.email } }
+        );
+      } else {
+        response = await axios.get(
+          `${API_URL}/history?email=${encodeURIComponent(user.email)}`
+        );
+      }
+
       if (response.data.success) {
         setExpenses(response.data.data);
       } else {
@@ -429,7 +439,7 @@ function App() {
               <div className="flex flex-col">
                 <div className="flex items-center gap-2">
                   <h1 className="text-[17px] font-bold text-[#1e293b] tracking-tight leading-none">DealFlow Gastos</h1>
-                  <span className="bg-[#f1f5f9] text-[#64748b] text-[10px] font-bold px-1.5 py-0.5 rounded leading-none">v1.0</span>
+                  <span className="bg-[#f1f5f9] text-[#64748b] text-[10px] font-bold px-1.5 py-0.5 rounded leading-none">v2.0</span>
                 </div>
                 <p className="text-[10px] uppercase tracking-widest text-[#94a3b8] font-bold mt-1 leading-none">Plataforma de Rendiciones</p>
               </div>
