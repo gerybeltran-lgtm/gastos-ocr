@@ -461,50 +461,54 @@ function App() {
           ) : activeTab === 'scanner' ? (
             /* TAB SCANNER */
             !transactionType ? (
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden max-w-2xl mx-auto p-8 mt-4">
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden max-w-4xl mx-auto p-8 mt-4">
                 <div className="text-center mb-10">
                   <h2 className="text-3xl font-black text-slate-800 mb-3 tracking-tight">¿Qué acción deseas realizar?</h2>
                   <p className="text-slate-500 font-medium">Selecciona el tipo de transacción para continuar.</p>
                 </div>
                 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="col-span-1 sm:col-span-2 mb-2">
-                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2">Rendición de Gastos</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  {/* Columna Izquierda: Rendición */}
+                  <div>
+                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2 mb-4">Rendición de Gastos</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <button onClick={() => setTransactionType('Boleta')} className="group p-4 bg-white border-2 border-slate-100 hover:border-[#38bdf8] rounded-xl flex flex-col items-center justify-center gap-2 transition-all hover:shadow-md">
+                        <div className="h-10 w-10 bg-sky-50 text-[#38bdf8] rounded-full flex items-center justify-center group-hover:scale-110 transition-transform"><FileText className="h-5 w-5" /></div>
+                        <span className="font-bold text-slate-700 text-sm">Rendición por Boleta</span>
+                      </button>
+                      
+                      <button onClick={() => setTransactionType('Factura')} className="group p-4 bg-white border-2 border-slate-100 hover:border-[#38bdf8] rounded-xl flex flex-col items-center justify-center gap-2 transition-all hover:shadow-md">
+                        <div className="h-10 w-10 bg-sky-50 text-[#38bdf8] rounded-full flex items-center justify-center group-hover:scale-110 transition-transform"><FileText className="h-5 w-5" /></div>
+                        <span className="font-bold text-slate-700 text-sm">Rendición por Factura</span>
+                      </button>
+                      
+                      <button onClick={() => setTransactionType('Sin Respaldo')} className="group p-4 bg-white border-2 border-slate-100 hover:border-amber-400 rounded-xl flex flex-col items-center justify-center gap-2 transition-all hover:shadow-md sm:col-span-2">
+                        <div className="h-10 w-10 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform"><AlertTriangle className="h-5 w-5" /></div>
+                        <span className="font-bold text-slate-700 text-sm">Gasto Sin Respaldo</span>
+                      </button>
+                    </div>
                   </div>
                   
-                  <button onClick={() => setTransactionType('Boleta')} className="group p-5 bg-white border-2 border-slate-100 hover:border-[#38bdf8] rounded-2xl flex flex-col items-center justify-center gap-3 transition-all hover:shadow-md">
-                    <div className="h-12 w-12 bg-sky-50 text-[#38bdf8] rounded-full flex items-center justify-center group-hover:scale-110 transition-transform"><FileText className="h-6 w-6" /></div>
-                    <span className="font-bold text-slate-700">Rendición por Boleta</span>
-                  </button>
-                  
-                  <button onClick={() => setTransactionType('Factura')} className="group p-5 bg-white border-2 border-slate-100 hover:border-[#38bdf8] rounded-2xl flex flex-col items-center justify-center gap-3 transition-all hover:shadow-md">
-                    <div className="h-12 w-12 bg-sky-50 text-[#38bdf8] rounded-full flex items-center justify-center group-hover:scale-110 transition-transform"><FileText className="h-6 w-6" /></div>
-                    <span className="font-bold text-slate-700">Rendición por Factura</span>
-                  </button>
-                  
-                  <button onClick={() => setTransactionType('Sin Respaldo')} className="group p-5 bg-white border-2 border-slate-100 hover:border-amber-400 rounded-2xl flex flex-col items-center justify-center gap-3 transition-all hover:shadow-md">
-                    <div className="h-12 w-12 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform"><AlertTriangle className="h-6 w-6" /></div>
-                    <span className="font-bold text-slate-700">Gasto Sin Respaldo</span>
-                  </button>
-                  
-                  <div className="col-span-1 sm:col-span-2 mt-6 mb-2">
-                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2">Gestión de Fondos</h3>
+                  {/* Columna Derecha: Fondos */}
+                  <div>
+                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2 mb-4">Gestión de Fondos</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <button onClick={() => setTransactionType('Ingreso de Dinero')} className="group p-4 bg-white border-2 border-slate-100 hover:border-emerald-400 rounded-xl flex flex-col items-center justify-center gap-2 transition-all hover:shadow-md">
+                        <div className="h-10 w-10 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform"><ArrowDownCircle className="h-5 w-5" /></div>
+                        <span className="font-bold text-slate-700 text-sm text-center">Ingreso de Dinero</span>
+                      </button>
+                      
+                      <button onClick={() => setTransactionType('Saldo Inicial')} className="group p-4 bg-white border-2 border-slate-100 hover:border-emerald-400 rounded-xl flex flex-col items-center justify-center gap-2 transition-all hover:shadow-md">
+                        <div className="h-10 w-10 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform"><Wallet className="h-5 w-5" /></div>
+                        <span className="font-bold text-slate-700 text-sm text-center">Saldo Inicial</span>
+                      </button>
+                      
+                      <button onClick={() => setTransactionType('Nota de Crédito')} className="group p-4 bg-white border-2 border-slate-100 hover:border-purple-400 rounded-xl flex flex-col items-center justify-center gap-2 transition-all hover:shadow-md sm:col-span-2">
+                        <div className="h-10 w-10 bg-purple-50 text-purple-500 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform"><RefreshCcw className="h-5 w-5" /></div>
+                        <span className="font-bold text-slate-700 text-sm">Nota de Crédito</span>
+                      </button>
+                    </div>
                   </div>
-
-                  <button onClick={() => setTransactionType('Ingreso de Dinero')} className="group p-5 bg-white border-2 border-slate-100 hover:border-emerald-400 rounded-2xl flex flex-col items-center justify-center gap-3 transition-all hover:shadow-md">
-                    <div className="h-12 w-12 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform"><ArrowDownCircle className="h-6 w-6" /></div>
-                    <span className="font-bold text-slate-700">Ingreso de Dinero</span>
-                  </button>
-                  
-                  <button onClick={() => setTransactionType('Saldo Inicial')} className="group p-5 bg-white border-2 border-slate-100 hover:border-emerald-400 rounded-2xl flex flex-col items-center justify-center gap-3 transition-all hover:shadow-md">
-                    <div className="h-12 w-12 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform"><Wallet className="h-6 w-6" /></div>
-                    <span className="font-bold text-slate-700">Saldo Inicial</span>
-                  </button>
-                  
-                  <button onClick={() => setTransactionType('Nota de Crédito')} className="group p-5 bg-white border-2 border-slate-100 hover:border-purple-400 rounded-2xl flex flex-col items-center justify-center gap-3 transition-all hover:shadow-md">
-                    <div className="h-12 w-12 bg-purple-50 text-purple-500 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform"><RefreshCcw className="h-6 w-6" /></div>
-                    <span className="font-bold text-slate-700">Nota de Crédito</span>
-                  </button>
                 </div>
               </div>
             ) : !result ? (
