@@ -465,7 +465,7 @@ function App() {
               <div className="flex flex-col">
                 <div className="flex items-center gap-2">
                   <h1 className="text-[17px] font-bold text-[#1e293b] tracking-tight leading-none">DealFlow Gastos</h1>
-                  <span className="bg-[#f1f5f9] text-[#64748b] text-[10px] font-bold px-1.5 py-0.5 rounded leading-none">v2.0</span>
+                  <span className="bg-[#f1f5f9] text-[#64748b] text-[10px] font-bold px-1.5 py-0.5 rounded leading-none">v2.1</span>
                 </div>
                 <p className="text-[10px] uppercase tracking-widest text-[#94a3b8] font-bold mt-1 leading-none">Plataforma de Rendiciones</p>
               </div>
