@@ -29,6 +29,7 @@ function App() {
   const [facturaAsociada, setFacturaAsociada] = useState('');
   const [descripcion, setDescripcion] = useState('');
   const [file, setFile] = useState(null);
+  const [manualFile, setManualFile] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState(null);
   const [reviewData, setReviewData] = useState(null);
@@ -138,11 +139,35 @@ function App() {
     setIsSaving(true);
     setError(null);
     try {
-      const payload = { ...reviewData, tipo_transaccion: transactionType, origen_fondos: origenFondos, factura_asociada: facturaAsociada, descripcion: descripcion };
+      let finalLinkDrive = reviewData.link_drive;
+      
+      if (manualFile && !finalLinkDrive) {
+        const formData = new FormData();
+        formData.append('file', manualFile);
+        formData.append('userName', user.name);
+        formData.append('userEmail', user.email);
+        formData.append('department', department || reviewData.departamento);
+        formData.append('costCenter', costCenter || reviewData.centro_costo);
+        formData.append('skip_ocr', 'true');
+        
+        const uploadRes = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/upload-receipt`, formData, {
+           headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        if (uploadRes.data.success && uploadRes.data.data.link_drive) {
+           finalLinkDrive = uploadRes.data.data.link_drive;
+        } else {
+           setError("Error subiendo el archivo adjunto.");
+           setIsSaving(false);
+           return;
+        }
+      }
+
+      const payload = { ...reviewData, link_drive: finalLinkDrive, tipo_transaccion: transactionType, origen_fondos: origenFondos, factura_asociada: facturaAsociada, descripcion: descripcion };
       const response = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/save-receipt`, payload);
       if (response.data.success) {
         setResult(response.data.data);
         setReviewData(null);
+        setManualFile(null);
       } else {
         setError("Error guardando: " + response.data.error);
       }
@@ -155,6 +180,7 @@ function App() {
 
   const resetForm = () => {
     setFile(null);
+    setManualFile(null);
     setResult(null);
     setReviewData(null);
     setError(null);
@@ -645,7 +671,7 @@ function App() {
                         <input type="date" value={reviewData.fecha_boleta} onChange={(e) => setReviewData({...reviewData, fecha_boleta: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm" />
                       </div>
 
-                      <div className="pt-2 border-t border-slate-100">
+                      <div className="pt-2 border-t border-slate-100 mt-4">
                         <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Observaciones</label>
                         <textarea 
                           value={descripcion}
@@ -655,6 +681,26 @@ function App() {
                           className="w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 transition-all text-sm"
                         ></textarea>
                       </div>
+
+                      {/* Manual File Upload */}
+                      {!reviewData.link_drive && (
+                        <div className="pt-4 border-t border-slate-100">
+                          <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Adjuntar Documento (Opcional)</label>
+                          <input 
+                            type="file" 
+                            accept="image/*,application/pdf"
+                            onChange={(e) => {
+                              if (e.target.files && e.target.files[0]) {
+                                setManualFile(e.target.files[0]);
+                              } else {
+                                setManualFile(null);
+                              }
+                            }}
+                            className="w-full text-sm text-slate-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-bold file:bg-sky-50 file:text-sky-700 hover:file:bg-sky-100 transition-colors"
+                          />
+                          {manualFile && <p className="text-xs text-sky-600 font-bold mt-2">Archivo listo para subir: {manualFile.name}</p>}
+                        </div>
+                      )}
 
                     </div>
 
@@ -766,9 +812,27 @@ function App() {
 
                   {!file && (
                      <button onClick={() => {
+                        if (!department) {
+                          setError("Por favor selecciona un Departamento antes de continuar.");
+                          return;
+                        }
+                        if (!costCenter) {
+                          setError("Por favor ingresa un Centro de Costo antes de continuar.");
+                          return;
+                        }
+                        setError(null);
                         // Skip file upload completely
                         setReviewData({
-                          rut_proveedor: '', fecha_boleta: new Date().toISOString().split('T')[0], monto_total: 0, iva: 0, link_drive: ''
+                          id: crypto.randomUUID(),
+                          usuario_nombre: user.name,
+                          usuario_email: user.email,
+                          departamento: department,
+                          centro_costo: costCenter,
+                          rut_proveedor: '', 
+                          fecha_boleta: new Date().toISOString().split('T')[0], 
+                          monto_total: 0, 
+                          iva: 0, 
+                          link_drive: ''
                         });
                      }} 
                      disabled={(['Boleta', 'Factura', 'Sin Respaldo'].includes(transactionType) && !origenFondos) || (transactionType === 'Nota de Crédito' && !facturaAsociada.trim())}
