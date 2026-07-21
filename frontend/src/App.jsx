@@ -1323,6 +1323,57 @@ function App() {
           )}
         </main>
       </div>
+
+      {/* Global Dialog Modal */}
+      {dialog.isOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden transform transition-all animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                {dialog.type === 'error' ? (
+                  <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                    <AlertCircle className="h-5 w-5 text-red-600" />
+                  </div>
+                ) : dialog.type === 'success' ? (
+                  <div className="h-10 w-10 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
+                    <CheckCircle className="h-5 w-5 text-emerald-600" />
+                  </div>
+                ) : (
+                  <div className="h-10 w-10 rounded-full bg-sky-100 flex items-center justify-center shrink-0">
+                    <HelpCircle className="h-5 w-5 text-sky-600" />
+                  </div>
+                )}
+                <h3 className="font-bold text-slate-800 text-lg">{dialog.title}</h3>
+              </div>
+              <p className="text-slate-600 text-[13px] whitespace-pre-line leading-relaxed">{dialog.message}</p>
+            </div>
+            <div className="bg-slate-50 px-6 py-4 flex justify-end gap-3 border-t border-slate-100">
+              {dialog.type === 'confirm' && (
+                <button 
+                  onClick={() => setDialog({ ...dialog, isOpen: false })}
+                  className="px-4 py-2 text-sm font-bold text-slate-500 hover:bg-slate-200 bg-slate-200/50 rounded-lg transition-colors outline-none"
+                >
+                  Cancelar
+                </button>
+              )}
+              <button 
+                onClick={() => {
+                  if (dialog.onConfirm) dialog.onConfirm();
+                  else setDialog({ ...dialog, isOpen: false });
+                }}
+                className={`px-4 py-2 text-sm font-bold text-white rounded-lg transition-colors outline-none ${
+                  dialog.type === 'error' ? 'bg-red-500 hover:bg-red-600' :
+                  dialog.type === 'success' ? 'bg-emerald-500 hover:bg-emerald-600' :
+                  'bg-sky-500 hover:bg-sky-600'
+                }`}
+              >
+                {dialog.type === 'confirm' ? 'Aceptar' : 'Entendido'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
   );
 }
 
