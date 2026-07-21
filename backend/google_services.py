@@ -11,8 +11,8 @@ LOCAL_CREDENTIALS_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__))
 CREDENTIALS_FILE = RENDER_SECRET_FILE if os.path.exists(RENDER_SECRET_FILE) else LOCAL_CREDENTIALS_FILE
 
 GOOGLE_CREDENTIALS_JSON = os.environ.get("GOOGLE_CREDENTIALS_JSON", "")
-FOLDER_ID = os.environ.get("GOOGLE_DRIVE_FOLDER_ID", "")
-SPREADSHEET_ID = os.environ.get("GOOGLE_SHEETS_ID", "")
+FOLDER_ID = os.environ.get("GOOGLE_DRIVE_FOLDER_ID", "1Bdg6Rzcj3tjuFbESEFAkLT4iV5kVRFij")
+SPREADSHEET_ID = os.environ.get("GOOGLE_SHEETS_ID", "13uq1ouzbLlc1efCPaaFpqIxVM_x4e8a93KyVdbEPwUo")
 
 if not FOLDER_ID or not SPREADSHEET_ID:
     import warnings
