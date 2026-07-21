@@ -1,9 +1,58 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Camera, Upload, CheckCircle, FileText, RefreshCcw, DollarSign, Calendar, Hash, User, ShieldAlert, History, Filter, Edit2, Trash2, X, PieChart, Users, Building2, BarChart3, ArrowRight, LogOut, AlertTriangle, ArrowDownCircle, Wallet, AlertCircle, HelpCircle } from 'lucide-react';
+import { Camera, Upload, CheckCircle, FileText, RefreshCcw, DollarSign, Calendar, Hash, User, ShieldAlert, History, Filter, Edit2, Trash2, X, PieChart, Users, Building2, BarChart3, ArrowRight, LogOut, AlertTriangle, ArrowDownCircle, Wallet, AlertCircle, HelpCircle, ChevronDown } from 'lucide-react';
 import { useGoogleLogin } from '@react-oauth/google';
 import { jwtDecode } from 'jwt-decode';
 import axios from 'axios';
 const ADMIN_EMAILS = ["gerardo.beltran@e-voltage.cl", "jose.diaz@e-voltage.cl", "jorge.salas@e-voltage.cl"];
+
+const HoverDropdown = ({ label, value, options, onChange, className = "" }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  
+  const handleMouseEnter = () => setIsOpen(true);
+  const handleMouseLeave = () => setIsOpen(false);
+
+  return (
+    <div 
+      className="relative z-40 group"
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
+      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 pl-1">{label}</label>
+      <div className={`w-full sm:w-36 bg-white border border-slate-300 rounded-lg px-4 py-2 flex items-center justify-between cursor-pointer group-hover:border-amber-400 group-hover:ring-2 group-hover:ring-amber-500/20 transition-all h-[42px] ${className}`}>
+        <span className="text-sm text-slate-700 truncate mr-2 font-medium">
+          {options.find(o => o.value === value)?.label || 'Todos'}
+        </span>
+        <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} />
+      </div>
+      
+      {/* Animated Dropdown Menu */}
+      <div 
+        className={`absolute top-full left-0 mt-2 w-full sm:w-48 bg-white border border-slate-200 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] overflow-hidden transition-all duration-300 origin-top ${
+          isOpen ? 'opacity-100 scale-y-100 translate-y-0' : 'opacity-0 scale-y-95 -translate-y-2 pointer-events-none'
+        }`}
+      >
+        <div className="py-1.5 max-h-64 overflow-y-auto">
+          {options.map((opt, i) => (
+            <div
+              key={i}
+              onClick={() => {
+                onChange(opt.value);
+                setIsOpen(false);
+              }}
+              className={`px-4 py-2.5 text-sm cursor-pointer transition-colors flex items-center ${
+                value === opt.value 
+                  ? 'bg-amber-50 text-amber-700 font-bold border-l-2 border-amber-500' 
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 border-l-2 border-transparent'
+              }`}
+            >
+              {opt.label}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 function App() {
   const [user, setUser] = useState(() => {
@@ -1106,45 +1155,32 @@ function App() {
                   
                   <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
                     {activeTab === 'admin' && (
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 pl-1">Usuario</label>
-                        <select 
-                          value={filterUser}
-                          onChange={(e) => setFilterUser(e.target.value)}
-                          className="w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all sm:w-36 p-2.5 rounded-lg text-sm"
-                        >
-                          <option value="">Todos</option>
-                          {uniqueUsers.map(u => <option key={u} value={u}>{u.split(' ')[0]}</option>)}
-                        </select>
-                      </div>
+                      <HoverDropdown 
+                        label="Usuario"
+                        value={filterUser}
+                        onChange={setFilterUser}
+                        options={[{value: '', label: 'Todos'}, ...uniqueUsers.map(u => ({value: u, label: u.split(' ')[0]}))]}
+                      />
                     )}
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 pl-1">Departamento</label>
-                      <select 
-                        value={filterDept}
-                        onChange={(e) => setFilterDept(e.target.value)}
-                        className="w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all sm:w-36 p-2.5 rounded-lg text-sm"
-                      >
-                        <option value="">Todos</option>
-                        <option value="Ventas">Ventas</option>
-                        <option value="Gerencia">Gerencia</option>
-                        <option value="Operaciones">Operaciones</option>
-                        <option value="Administración">Administración</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 pl-1">Centro Costo</label>
-                      <select 
-                        value={filterCostCenter}
-                        onChange={(e) => setFilterCostCenter(e.target.value)}
-                        className="w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all sm:w-36 p-2.5 rounded-lg text-sm font-mono"
-                      >
-                        <option value="">Todos</option>
-                        {uniqueCostCenters.map(cc => (
-                          <option key={cc} value={cc}>{cc}</option>
-                        ))}
-                      </select>
-                    </div>
+                    <HoverDropdown 
+                      label="Departamento"
+                      value={filterDept}
+                      onChange={setFilterDept}
+                      options={[
+                        {value: '', label: 'Todos'}, 
+                        {value: 'Ventas', label: 'Ventas'},
+                        {value: 'Gerencia', label: 'Gerencia'},
+                        {value: 'Operaciones', label: 'Operaciones'},
+                        {value: 'Administración', label: 'Administración'}
+                      ]}
+                    />
+                    <HoverDropdown 
+                      label="Centro Costo"
+                      value={filterCostCenter}
+                      onChange={setFilterCostCenter}
+                      className="font-mono"
+                      options={[{value: '', label: 'Todos'}, ...uniqueCostCenters.map(cc => ({value: cc, label: cc}))]}
+                    />
                     <div className="flex items-end gap-2">
                       <button 
                         onClick={fetchHistory} 
