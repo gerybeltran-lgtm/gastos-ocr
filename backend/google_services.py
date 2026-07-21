@@ -5,7 +5,11 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
 # IDs leídos desde variables de entorno (nunca hardcodeados)
-CREDENTIALS_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'credentials.json')
+RENDER_SECRET_FILE = '/etc/secrets/credentials.json'
+LOCAL_CREDENTIALS_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'credentials.json')
+
+CREDENTIALS_FILE = RENDER_SECRET_FILE if os.path.exists(RENDER_SECRET_FILE) else LOCAL_CREDENTIALS_FILE
+
 GOOGLE_CREDENTIALS_JSON = os.environ.get("GOOGLE_CREDENTIALS_JSON", "")
 FOLDER_ID = os.environ.get("GOOGLE_DRIVE_FOLDER_ID", "")
 SPREADSHEET_ID = os.environ.get("GOOGLE_SHEETS_ID", "")
