@@ -1322,7 +1322,6 @@ function App() {
             </div>
           )}
         </main>
-      </div>
 
       {/* Global Dialog Modal */}
       {dialog.isOpen && (
@@ -1373,7 +1372,7 @@ function App() {
           </div>
         </div>
       )}
-
+      </div>
   );
 }
 
