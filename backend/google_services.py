@@ -23,6 +23,8 @@ def get_google_services():
     if GOOGLE_CREDENTIALS_JSON:
         try:
             creds_info = json.loads(GOOGLE_CREDENTIALS_JSON)
+            if "private_key" in creds_info:
+                creds_info["private_key"] = creds_info["private_key"].replace('\\n', '\n')
             creds = service_account.Credentials.from_service_account_info(
                 creds_info, scopes=SCOPES)
         except Exception as e:
