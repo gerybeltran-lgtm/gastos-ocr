@@ -816,7 +816,7 @@ function App() {
                       value={costCenter}
                       onChange={(e) => setCostCenter(e.target.value.toUpperCase())}
                       placeholder="Ej: OEV-EXT-260008"
-                      className="w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all p-3.5 rounded-xl text-sm font-mono uppercase"
+                      className="w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all p-3.5 rounded-xl text-sm uppercase"
                     />
                   </div>
 
@@ -1076,7 +1076,7 @@ function App() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     {expensesByCostCenter.map(([cc, amount]) => (
                       <div key={cc} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
-                        <span className="text-xs font-mono font-bold text-slate-600 truncate pr-2">{cc}</span>
+                        <span className="text-xs font-bold text-slate-600 truncate pr-2">{cc}</span>
                         <span className="text-xs font-bold text-amber-600 whitespace-nowrap">${amount.toLocaleString('es-CL')}</span>
                       </div>
                     ))}
@@ -1133,7 +1133,7 @@ function App() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       {expensesByCostCenter.map(([cc, amount]) => (
                         <div key={cc} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
-                          <span className="text-xs font-mono font-bold text-slate-600 truncate pr-2">{cc}</span>
+                          <span className="text-xs font-bold text-slate-600 truncate pr-2">{cc}</span>
                           <span className="text-xs font-bold text-amber-600 whitespace-nowrap">${amount.toLocaleString('es-CL')}</span>
                         </div>
                       ))}
@@ -1178,7 +1178,7 @@ function App() {
                       label="Centro Costo"
                       value={filterCostCenter}
                       onChange={setFilterCostCenter}
-                      className="font-mono"
+                      className=""
                       options={[{value: '', label: 'Todos'}, ...uniqueCostCenters.map(cc => ({value: cc, label: cc}))]}
                     />
                     <div className="flex items-end gap-2">
@@ -1260,7 +1260,7 @@ function App() {
                             )}
                             <td className="p-5">
                               <p className="text-sm font-semibold text-slate-700">{exp.rut_proveedor}</p>
-                              <p className="text-xs text-slate-400 mt-0.5 font-mono">{exp.centro_costo}</p>
+                              <p className="text-xs text-slate-400 mt-0.5 ">{exp.centro_costo}</p>
                             </td>
                             <td className="p-5 text-center">
                               <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
@@ -1330,7 +1330,7 @@ function App() {
                     <div className="p-6 space-y-5">
                       <div>
                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Centro de Costo</label>
-                        <input type="text" value={editForm.centro_costo} onChange={e => setEditForm({...editForm, centro_costo: e.target.value.toUpperCase()})} className="w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all p-3 rounded-xl font-mono uppercase" />
+                        <input type="text" value={editForm.centro_costo} onChange={e => setEditForm({...editForm, centro_costo: e.target.value.toUpperCase()})} className="w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all p-3 rounded-xl uppercase" />
                       </div>
                       <div className="grid grid-cols-2 gap-5">
                         <div>
