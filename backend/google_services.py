@@ -24,7 +24,10 @@ SCOPES = [
 ]
 
 def get_google_services():
-    if GOOGLE_CREDENTIALS_JSON:
+    if os.path.exists(RENDER_SECRET_FILE):
+        creds = service_account.Credentials.from_service_account_file(
+            RENDER_SECRET_FILE, scopes=SCOPES)
+    elif GOOGLE_CREDENTIALS_JSON:
         try:
             creds_info = json.loads(GOOGLE_CREDENTIALS_JSON)
             if "private_key" in creds_info:
@@ -37,6 +40,7 @@ def get_google_services():
     else:
         creds = service_account.Credentials.from_service_account_file(
             CREDENTIALS_FILE, scopes=SCOPES)
+            
             
     drive_service = build('drive', 'v3', credentials=creds)
     sheets_service = build('sheets', 'v4', credentials=creds)
