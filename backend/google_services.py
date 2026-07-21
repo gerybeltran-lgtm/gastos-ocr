@@ -1,12 +1,18 @@
 import os
+import json
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
-# Constantes (reemplaza con los tuyos si cambian)
+# IDs leídos desde variables de entorno (nunca hardcodeados)
 CREDENTIALS_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'credentials.json')
-FOLDER_ID = '1Bdg6Rzcj3tjuFbESEFAkLT4iV5kVRFij'
-SPREADSHEET_ID = '13uq1ouzbLlc1efCPaaFpqIxVM_x4e8a93KyVdbEPwUo'
+GOOGLE_CREDENTIALS_JSON = os.environ.get("GOOGLE_CREDENTIALS_JSON", "")
+FOLDER_ID = os.environ.get("GOOGLE_DRIVE_FOLDER_ID", "")
+SPREADSHEET_ID = os.environ.get("GOOGLE_SHEETS_ID", "")
+
+if not FOLDER_ID or not SPREADSHEET_ID:
+    import warnings
+    warnings.warn("GOOGLE_DRIVE_FOLDER_ID o GOOGLE_SHEETS_ID no están configurados en las variables de entorno")
 
 SCOPES = [
     'https://www.googleapis.com/auth/drive',
@@ -14,8 +20,18 @@ SCOPES = [
 ]
 
 def get_google_services():
-    creds = service_account.Credentials.from_service_account_file(
-        CREDENTIALS_FILE, scopes=SCOPES)
+    if GOOGLE_CREDENTIALS_JSON:
+        try:
+            creds_info = json.loads(GOOGLE_CREDENTIALS_JSON)
+            creds = service_account.Credentials.from_service_account_info(
+                creds_info, scopes=SCOPES)
+        except Exception as e:
+            print(f"Error parseando GOOGLE_CREDENTIALS_JSON: {e}")
+            raise
+    else:
+        creds = service_account.Credentials.from_service_account_file(
+            CREDENTIALS_FILE, scopes=SCOPES)
+            
     drive_service = build('drive', 'v3', credentials=creds)
     sheets_service = build('sheets', 'v4', credentials=creds)
     return drive_service, sheets_service
