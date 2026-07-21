@@ -51,6 +51,13 @@ function App() {
   const [editingExpense, setEditingExpense] = useState(null);
   const [editForm, setEditForm] = useState({});
 
+  // Custom UI Dialog
+  const [dialog, setDialog] = useState({ isOpen: false, type: 'info', title: '', message: '', onConfirm: null });
+
+  const showConfirm = (title, message, onConfirm) => setDialog({ isOpen: true, type: 'confirm', title, message, onConfirm });
+  const showError = (title, message) => setDialog({ isOpen: true, type: 'error', title, message, onConfirm: null });
+  const showSuccess = (title, message) => setDialog({ isOpen: true, type: 'success', title, message, onConfirm: null });
+
   const isAdmin = user && ADMIN_EMAILS.includes(user.email.toLowerCase());
 
   const login = useGoogleLogin({
@@ -259,19 +266,25 @@ function App() {
       fetchHistory();
     } catch (err) {
       console.error("Error updating status", err);
-      alert("Hubo un error al actualizar el estado");
+      showError("Error", "Hubo un error al actualizar el estado");
     }
   };
 
   const handleDelete = async (id) => {
-    if (window.confirm("¿Estás seguro de que quieres eliminar este gasto?")) {
-      try {
-        await axios.delete(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/expense/${id}`);
-        fetchHistory();
-      } catch (err) {
-        console.error("Error deleting", err);
+    showConfirm(
+      "Eliminar Registro", 
+      "¿Estás seguro de que quieres eliminar este gasto? Esta acción no se puede deshacer.", 
+      async () => {
+        setDialog({ isOpen: false });
+        try {
+          await axios.delete(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/expense/${id}`);
+          fetchHistory();
+        } catch (err) {
+          console.error("Error deleting", err);
+          showError("Error", "Hubo un error al eliminar el registro.");
+        }
       }
-    }
+    );
   };
 
   const startEdit = (exp) => {
@@ -292,79 +305,77 @@ function App() {
       fetchHistory();
     } catch (err) {
       console.error("Error updating", err);
-      alert("Error al actualizar el gasto");
+      showError("Error", "Error al actualizar el gasto");
     }
   };
 
   const handleExport = async () => {
     const isFiltered = filterDept || filterCostCenter || filterUser;
     const mensaje = isFiltered 
-      ? `Estás a punto de exportar a Google Sheets SOLO los ${filteredExpenses.length} registros que cumplen con tus filtros actuales.\n\nEsto sobrescribirá la planilla.\n\n¿Deseas continuar?`
-      : `Estás a punto de exportar TODOS los registros (${filteredExpenses.length} en total) a Google Sheets.\n\nEsto sobrescribirá la planilla.\n\n¿Deseas continuar?`;
+      ? `Estás a punto de exportar a Google Sheets SOLO los ${filteredExpenses.length} registros que cumplen con tus filtros actuales.\n\nEsto sobrescribirá la planilla en Drive.\n\n¿Deseas continuar?`
+      : `Estás a punto de exportar TODOS los registros (${filteredExpenses.length} en total) a Google Sheets.\n\nEsto sobrescribirá la planilla en Drive.\n\n¿Deseas continuar?`;
       
-    if (!window.confirm(mensaje)) {
-      return;
-    }
-    
-    setIsExporting(true);
-    try {
-      // Encabezados de la tabla
-      const headers = [
-        "ID Gasto", 
-        "Estado", 
-        "Fecha Captura", 
-        "Usuario", 
-        "Email", 
-        "Departamento", 
-        "Centro de Costo", 
-        "RUT Proveedor", 
-        "Fecha Boleta", 
-        "Monto Total", 
-        "IVA", 
-        "Link Boleta",
-        "Tipo Transacción",
-        "Origen Fondos",
-        "N° Doc / Fact. Asociada",
-        "Descripción",
-        "Comentarios Revisor"
-      ];
+    showConfirm("Confirmar Exportación", mensaje, async () => {
+      setDialog({ isOpen: false });
+      setIsExporting(true);
+      try {
+        // Encabezados de la tabla
+        const headers = [
+          "ID Gasto", 
+          "Estado", 
+          "Fecha Captura", 
+          "Usuario", 
+          "Email", 
+          "Departamento", 
+          "Centro de Costo", 
+          "RUT Proveedor", 
+          "Fecha Boleta", 
+          "Monto Total", 
+          "IVA", 
+          "Link Boleta",
+          "Tipo Transacción",
+          "Origen Fondos",
+          "N° Doc / Fact. Asociada",
+          "Descripción",
+          "Comentarios Revisor"
+        ];
 
-      // Formatear filas para exportar
-      const dataRows = filteredExpenses.map(exp => [
-        exp.id,
-        exp.estado || "Pendiente de Revisión",
-        exp.fecha_captura || "",
-        exp.usuario_nombre || "",
-        exp.usuario_email || "",
-        exp.departamento || "",
-        exp.centro_costo || "",
-        exp.rut_proveedor || "",
-        exp.fecha_boleta || "",
-        exp.monto_total || 0,
-        exp.iva || 0,
-        exp.link_drive || "",
-        exp.tipo_transaccion || "Boleta",
-        exp.origen_fondos || "Caja Principal",
-        exp.factura_asociada || "",
-        exp.descripcion || "",
-        exp.comentarios_revisor || ""
-      ]);
+        // Formatear filas para exportar
+        const dataRows = filteredExpenses.map(exp => [
+          exp.id,
+          exp.estado || "Pendiente de Revisión",
+          exp.fecha_captura || "",
+          exp.usuario_nombre || "",
+          exp.usuario_email || "",
+          exp.departamento || "",
+          exp.centro_costo || "",
+          exp.rut_proveedor || "",
+          exp.fecha_boleta || "",
+          exp.monto_total || 0,
+          exp.iva || 0,
+          exp.link_drive || "",
+          exp.tipo_transaccion || "Boleta",
+          exp.origen_fondos || "Caja Principal",
+          exp.factura_asociada || "",
+          exp.descripcion || "",
+          exp.comentarios_revisor || ""
+        ]);
 
-      const rows = [headers, ...dataRows];
+        const rows = [headers, ...dataRows];
 
-      const response = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/export-sheets`, { rows });
-      if (response.data.success) {
-        alert(`Se han exportado ${dataRows.length} registros a Google Sheets con éxito.`);
-        window.open("https://docs.google.com/spreadsheets/d/13uq1ouzbLlc1efCPaaFpqIxVM_x4e8a93KyVdbEPwUo/edit", "_blank");
-      } else {
-        alert("Error al exportar: " + response.data.error);
+        const response = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/export-sheets`, { rows });
+        if (response.data.success) {
+          showSuccess("¡Exportación Exitosa!", `Se han exportado ${dataRows.length} registros a Google Sheets correctamente.`);
+        } else {
+          showError("Error de Exportación", response.data.error || "Ocurrió un error en el servidor.");
+        }
+      } catch (err) {
+        console.error("Export error", err);
+        showError("Error de Red", "No se pudo conectar con el servidor para exportar a Sheets.");
+      } finally {
+        setIsExporting(false);
       }
-    } catch (err) {
-      console.error("Export error", err);
-      alert("Error de red al exportar a Sheets.");
-    } finally {
-      setIsExporting(false);
-    }
+    });
   };
 
   const uniqueCostCenters = [...new Set(expenses.map(exp => exp.centro_costo))].filter(Boolean).sort();
@@ -873,7 +884,7 @@ function App() {
                             }}
                             className="px-5 py-2.5 w-full sm:w-auto bg-slate-800 hover:bg-slate-900 text-white rounded-lg font-bold text-xs transition-colors flex items-center justify-center gap-2"
                           >
-                            <Edit2 className="h-4 w-4" /> Ingresar Manualmente
+                          <Edit2 className="h-4 w-4" /> Ingresar Manualmente
                           </button>
                         )}
                       </div>
