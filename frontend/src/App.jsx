@@ -7,21 +7,33 @@ const ADMIN_EMAILS = ["gerardo.beltran@e-voltage.cl", "jose.diaz@e-voltage.cl", 
 
 const HoverDropdown = ({ label, value, options, onChange, className = "" }) => {
   const [isOpen, setIsOpen] = useState(false);
-  
-  const handleMouseEnter = () => setIsOpen(true);
-  const handleMouseLeave = () => setIsOpen(false);
+  const dropdownRef = React.useRef(null);
+
+  React.useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, []);
+
   const toggleDropdown = () => setIsOpen(!isOpen);
 
   return (
     <div 
-      className={`relative group ${isOpen ? 'z-50' : 'z-40'}`}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
+      ref={dropdownRef}
+      className={`relative ${isOpen ? 'z-50' : 'z-40'}`}
     >
       <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 pl-1">{label}</label>
       <div 
         onClick={toggleDropdown}
-        className={`w-full sm:w-36 bg-white border border-slate-300 rounded-lg px-4 py-2 flex items-center justify-between cursor-pointer group-hover:border-amber-400 group-hover:ring-2 group-hover:ring-amber-500/20 transition-all h-[42px] ${className}`}
+        className={`w-full sm:w-36 bg-white border border-slate-300 rounded-lg px-4 py-2 flex items-center justify-between cursor-pointer hover:border-amber-400 hover:ring-2 hover:ring-amber-500/20 transition-all h-[42px] ${className}`}
       >
         <span className="text-sm text-slate-700 truncate mr-2 font-medium">
           {options.find(o => o.value === value)?.label || 'Todos'}
