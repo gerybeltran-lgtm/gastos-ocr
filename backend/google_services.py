@@ -23,7 +23,15 @@ SCOPES = [
     'https://www.googleapis.com/auth/spreadsheets'
 ]
 
+_drive_service = None
+_sheets_service = None
+
 def get_google_services():
+    global _drive_service, _sheets_service
+    
+    if _drive_service is not None and _sheets_service is not None:
+        return _drive_service, _sheets_service
+
     if os.path.exists(RENDER_SECRET_FILE):
         creds = service_account.Credentials.from_service_account_file(
             RENDER_SECRET_FILE, scopes=SCOPES)
@@ -41,10 +49,9 @@ def get_google_services():
         creds = service_account.Credentials.from_service_account_file(
             CREDENTIALS_FILE, scopes=SCOPES)
             
-            
-    drive_service = build('drive', 'v3', credentials=creds)
-    sheets_service = build('sheets', 'v4', credentials=creds)
-    return drive_service, sheets_service
+    _drive_service = build('drive', 'v3', credentials=creds)
+    _sheets_service = build('sheets', 'v4', credentials=creds)
+    return _drive_service, _sheets_service
 
 def upload_image_to_drive(file_path, filename):
     drive_service, _ = get_google_services()

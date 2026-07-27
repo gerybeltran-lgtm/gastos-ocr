@@ -26,11 +26,19 @@ def preprocess_image(input_path: str, output_path: str = "optimized_receipt.jpg"
     return output_path
 
 
+_vision_client = None
+
+def get_vision_client():
+    global _vision_client
+    if _vision_client is None:
+        _vision_client = vision.ImageAnnotatorClient()
+    return _vision_client
+
 def extract_text_from_image(image_path: str) -> str:
     """
     Envía la imagen a Google Cloud Vision API y retorna el texto extraído (OCR).
     """
-    client = vision.ImageAnnotatorClient()
+    client = get_vision_client()
 
     with open(image_path, "rb") as image_file:
         content = image_file.read()
