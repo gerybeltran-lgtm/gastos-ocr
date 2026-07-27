@@ -459,6 +459,7 @@ function App() {
     let saldosAFavor = 0;
     let totalGastado = 0;
     let ivaAcumulado = 0;
+    let fondosSinRespaldo = 0;
     
     filteredExpenses.forEach(exp => {
       const monto = parseFloat(exp.monto_total) || 0;
@@ -482,6 +483,11 @@ function App() {
         if (exp.estado !== 'Rechazado') {
            totalGastado += monto;
            ivaAcumulado += iva;
+           
+           if (exp.tipo_transaccion === 'Gasto Sin Respaldo') {
+               fondosSinRespaldo += monto;
+           }
+
            if (exp.origen_fondos === 'Caja Principal' || !exp.origen_fondos) {
               fondosDisponibles -= monto;
            } else if (exp.origen_fondos === 'Casa Comercial') {
@@ -491,13 +497,14 @@ function App() {
       }
     });
     
-    return { fondosDisponibles, saldosAFavor, totalGastado, ivaAcumulado };
+    return { fondosDisponibles, saldosAFavor, totalGastado, ivaAcumulado, fondosSinRespaldo };
   }, [filteredExpenses]);
 
   const totalSpent = finanzas.totalGastado;
   const fondosDisponibles = finanzas.fondosDisponibles;
   const saldosAFavor = finanzas.saldosAFavor;
   const ivaAcumulado = finanzas.ivaAcumulado;
+  const fondosSinRespaldo = finanzas.fondosSinRespaldo;
   const totalInvoices = filteredExpenses.length;
 
   const expensesByDept = useMemo(() => {
@@ -1133,8 +1140,8 @@ function App() {
                       <FileText className="h-6 w-6" />
                     </div>
                     <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1" title="Lo que la empresa te debe reembolsar">Por Recuperar por Liquidación</p>
-                      <p className="text-2xl font-black text-slate-800">${(fondosDisponibles < 0 ? Math.abs(fondosDisponibles) : 0).toLocaleString('es-CL')}</p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1" title="Gastos sin respaldo que se pagan en liquidación">Por Recuperar por Liquidación</p>
+                      <p className="text-2xl font-black text-slate-800">${fondosSinRespaldo.toLocaleString('es-CL')}</p>
                     </div>
                   </div>
                 </div>
