@@ -507,10 +507,19 @@ function App() {
   const fondosSinRespaldo = finanzas.fondosSinRespaldo;
   const totalInvoices = filteredExpenses.length;
 
+  const isValidExpense = (exp) => {
+    return exp.estado !== 'Rechazado' && 
+           exp.tipo_transaccion !== 'Saldo Inicial' && 
+           exp.tipo_transaccion !== 'Ingreso de Dinero' && 
+           exp.tipo_transaccion !== 'Nota de Crédito';
+  };
+
   const expensesByDept = useMemo(() => {
     const res = {};
     filteredExpenses.forEach(exp => {
-      res[exp.departamento] = (res[exp.departamento] || 0) + (parseFloat(exp.monto_total) || 0);
+      if (isValidExpense(exp)) {
+        res[exp.departamento] = (res[exp.departamento] || 0) + (parseFloat(exp.monto_total) || 0);
+      }
     });
     return Object.entries(res).sort((a,b) => b[1] - a[1]);
   }, [filteredExpenses]);
@@ -518,7 +527,9 @@ function App() {
   const expensesByUser = useMemo(() => {
     const res = {};
     filteredExpenses.forEach(exp => {
-      res[exp.usuario_nombre] = (res[exp.usuario_nombre] || 0) + (parseFloat(exp.monto_total) || 0);
+      if (isValidExpense(exp)) {
+        res[exp.usuario_nombre] = (res[exp.usuario_nombre] || 0) + (parseFloat(exp.monto_total) || 0);
+      }
     });
     return Object.entries(res).sort((a,b) => b[1] - a[1]);
   }, [filteredExpenses]);
@@ -526,7 +537,7 @@ function App() {
   const expensesByCostCenter = useMemo(() => {
     const res = {};
     filteredExpenses.forEach(exp => {
-      if (exp.centro_costo) {
+      if (exp.centro_costo && isValidExpense(exp)) {
         res[exp.centro_costo] = (res[exp.centro_costo] || 0) + (parseFloat(exp.monto_total) || 0);
       }
     });
