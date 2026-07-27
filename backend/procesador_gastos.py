@@ -68,9 +68,14 @@ def parse_receipt_data(text: str) -> dict:
         datos["fecha"] = fecha_match.group(0)
 
     # 3. Extraer Monto Total
-    monto_pattern = r'(?i)TOTAL(?:.*?)?\$?\s*([\d\.]+)'
+    # Estrategia 1: Buscar TOTAL explícito (ignorando SUB-TOTAL) en la misma línea
+    monto_pattern = r'(?i)(?<!SUB)(?<!SUB-)TOTAL[^\n\d]*\$?\s*([\d\.]+)'
     montos_encontrados = re.findall(monto_pattern, text)
     
+    # Estrategia 2: Si no encuentra TOTAL válido, tomar el último monto con signo $ del documento
+    if not montos_encontrados:
+        montos_encontrados = re.findall(r'\$\s*([\d\.]+)', text)
+        
     if montos_encontrados:
         posible_total = montos_encontrados[-1].replace('.', '').strip()
         if posible_total.isdigit():
