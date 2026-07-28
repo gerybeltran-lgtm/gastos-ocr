@@ -46,10 +46,10 @@ def get_vision_client():
             # Forzamos los scopes para generar un OAuth token estándar, no un self-signed JWT.
             scopes = ['https://www.googleapis.com/auth/cloud-platform']
             creds = service_account.Credentials.from_service_account_info(creds_info, scopes=scopes)
-            _vision_client = vision.ImageAnnotatorClient(credentials=creds)
+            _vision_client = vision.ImageAnnotatorClient(credentials=creds, transport="rest")
         else:
             # Fallback para desarrollo local (lee GOOGLE_APPLICATION_CREDENTIALS por defecto)
-            _vision_client = vision.ImageAnnotatorClient()
+            _vision_client = vision.ImageAnnotatorClient(transport="rest")
     return _vision_client
 
 def extract_text_from_image(image_path: str) -> str:
