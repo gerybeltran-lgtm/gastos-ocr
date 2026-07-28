@@ -1,5 +1,12 @@
 import os
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException, BackgroundTasks
+# Cargar variables de entorno desde .env antes de cualquier otra importación
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # python-dotenv no instalado, se usarán variables del sistema
+
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
 import shutil
@@ -12,10 +19,18 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
+# --- Constantes de seguridad ---
+MAX_FILE_SIZE_MB = 10
+MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
+ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".pdf"}
+ALLOWED_MIME_TYPES = {"image/jpeg", "image/png", "application/pdf"}
+
+ADMIN_EMAILS = ["gerardo.beltran@e-voltage.cl", "jose.diaz@e-voltage.cl", "jorge.salas@e-voltage.cl"]
+
 def send_notification_email(data: dict):
     sender_email = os.environ.get("SENDER_EMAIL", "notificacionesevoltage@gmail.com")
     app_password = os.environ.get("EMAIL_PASSWORD", "")
-    receiver_emails = ["gerardo.beltran@e-voltage.cl", "jose.diaz@e-voltage.cl", "jorge.salas@e-voltage.cl"]
+    receiver_emails = ADMIN_EMAILS
 
     subject = f"Nueva Rendición: {data.get('tipo_transaccion', 'Desconocido')} de {data.get('usuario_nombre', 'Usuario')}"
     
@@ -77,9 +92,11 @@ if os.environ.get("GOOGLE_CREDENTIALS_JSON"):
 
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = cred_path
 
-# Supabase CRM Config
-SUPABASE_URL = "https://msfvsjrubvzhkxzqjlhw.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1zZnZzanJ1YnZ6aGt4enFqbGh3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQxNjQ0MjQsImV4cCI6MjA3OTc0MDQyNH0.wP2YOTquFQvh_-VtY3Xv-tQWXq85HfqsIfK4E_XKZ9M"
+# Supabase CRM Config — leído desde variables de entorno
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise RuntimeError("ERROR: Faltan variables de entorno SUPABASE_URL o SUPABASE_KEY. Configura el archivo .env")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 from procesador_gastos import preprocess_image, extract_text_from_image, parse_receipt_data
@@ -88,12 +105,15 @@ from typing import List, Optional
 
 app = FastAPI(title="API Rendición de Gastos")
 
+_allowed_origins_raw = os.environ.get("ALLOWED_ORIGINS", "http://localhost:5173")
+ALLOWED_ORIGINS_LIST = [o.strip() for o in _allowed_origins_raw.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS_LIST,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 class EditExpenseRequest(BaseModel):
@@ -135,6 +155,16 @@ class UpdateStatusRequest(BaseModel):
     estado: str
     comentarios_revisor: Optional[str] = ""
 
+def _validate_uploaded_file(file: UploadFile) -> None:
+    """Valida extensión y tipo MIME del archivo subido."""
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Nombre de archivo inválido")
+    ext = os.path.splitext(file.filename.lower())[1]
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"Extensión no permitida. Use: {', '.join(ALLOWED_EXTENSIONS)}")
+    if file.content_type and file.content_type not in ALLOWED_MIME_TYPES:
+        raise HTTPException(status_code=400, detail="Tipo de archivo no permitido")
+
 @app.post("/upload-receipt")
 async def upload_receipt(
     file: UploadFile = File(...),
@@ -145,12 +175,26 @@ async def upload_receipt(
     skip_ocr: str = Form("false")
 ):
     try:
+        # Validar tipo y extensión del archivo
+        _validate_uploaded_file(file)
+
+        # Validar tamaño máximo
+        file_content = await file.read()
+        if len(file_content) > MAX_FILE_SIZE_BYTES:
+            raise HTTPException(status_code=413, detail=f"Archivo demasiado grande. Máximo permitido: {MAX_FILE_SIZE_MB}MB")
+        # Rebobinar el archivo para poder leerlo después
+        import io
+        file.file = io.BytesIO(file_content)
+
         # Generar ID único para este gasto
         expense_id = str(uuid.uuid4())
-        
-        # 1. Guardar archivo localmente de forma temporal
-        temp_filename = f"temp_{uuid.uuid4()}_{file.filename}"
-        temp_filepath = os.path.join(BASE_DIR, temp_filename)
+
+        # 1. Guardar archivo en carpeta temporal segura
+        tmp_dir = os.path.join(BASE_DIR, "tmp_uploads")
+        os.makedirs(tmp_dir, exist_ok=True)
+        safe_filename = f"{uuid.uuid4()}{os.path.splitext(file.filename)[1].lower()}"
+        temp_filename = f"temp_{safe_filename}"
+        temp_filepath = os.path.join(tmp_dir, temp_filename)
         
         with open(temp_filepath, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
@@ -185,11 +229,10 @@ async def upload_receipt(
         
         if skip_ocr.lower() != "true":
             try:
-                optimized_filepath = os.path.join(BASE_DIR, f"opt_{temp_filename}")
-                preprocess_image(temp_filepath, optimized_filepath)
-                texto_extraido = extract_text_from_image(optimized_filepath)
+                optimized_filepath = os.path.join(tmp_dir, f"opt_{temp_filename}")
+                upload_target = preprocess_image(temp_filepath, optimized_filepath)
+                texto_extraido = extract_text_from_image(upload_target)
                 datos_estructurados = parse_receipt_data(texto_extraido)
-                upload_target = optimized_filepath
             except Exception as e:
                 print(f"OCR Error: {str(e)}")
                 ocr_error = True
@@ -239,9 +282,11 @@ async def upload_receipt(
             "data": supabase_data
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error procesando boleta: {str(e)}")
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "Error interno al procesar el archivo"}
 
 @app.post("/save-receipt")
 async def save_receipt(data: SaveExpenseRequest, background_tasks: BackgroundTasks):
@@ -276,7 +321,7 @@ async def save_receipt(data: SaveExpenseRequest, background_tasks: BackgroundTas
         return {"success": True, "data": supabase_data}
     except Exception as e:
         print(f"Error guardando recibo: {str(e)}")
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "Error interno al guardar el recibo"}
 
 @app.post("/export-sheets")
 async def export_sheets(data: ExportRequest):
@@ -285,7 +330,7 @@ async def export_sheets(data: ExportRequest):
         return {"success": True}
     except Exception as e:
         print(f"Error exportando a Sheets: {str(e)}")
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "Error interno al exportar a Sheets"}
 
 @app.get("/history")
 async def history(email: str):
@@ -295,20 +340,23 @@ async def history(email: str):
         return {"success": True, "data": response.data}
     except Exception as e:
         print(f"Error obteniendo historial: {str(e)}")
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "Error interno al obtener el historial"}
 
 @app.get("/admin/history")
-async def admin_history(email: str):
-    ADMIN_EMAILS = ["gerardo.beltran@e-voltage.cl", "jose.diaz@e-voltage.cl", "jorge.salas@e-voltage.cl"]
-    if email.lower() not in ADMIN_EMAILS:
-        return {"success": False, "error": "Acceso denegado"}
+async def admin_history(request: Request, email: str):
+    # Verificar que el email venga del header X-User-Email además del query param
+    # Esto agrega una capa extra de verificación contra requests directas
+    header_email = request.headers.get("X-User-Email", "").lower()
+    query_email = email.lower()
+    if header_email != query_email or query_email not in ADMIN_EMAILS:
+        raise HTTPException(status_code=403, detail="Acceso denegado")
     try:
         # Obtenemos TODOS los gastos para el panel admin
         response = supabase.table("transacciones").select("*").order("fecha_captura", desc=True).execute()
         return {"success": True, "data": response.data}
     except Exception as e:
         print(f"Error obteniendo historial admin: {str(e)}")
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "Error interno al obtener historial admin"}
 
 @app.post("/update-expense-status")
 async def update_expense_status(data: UpdateStatusRequest):
@@ -320,7 +368,7 @@ async def update_expense_status(data: UpdateStatusRequest):
         return {"success": True, "data": response.data}
     except Exception as e:
         print(f"Error updating status: {str(e)}")
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "Error interno al actualizar estado"}
 
 @app.delete("/expense/{expense_id}")
 async def delete_expense(expense_id: str):
@@ -329,7 +377,8 @@ async def delete_expense(expense_id: str):
         supabase.table("transacciones").delete().eq("id", expense_id).execute()
         return {"success": True}
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        print(f"Error eliminando gasto: {str(e)}")
+        return {"success": False, "error": "Error interno al eliminar el gasto"}
 
 @app.put("/expense/{expense_id}")
 async def edit_expense(expense_id: str, data: EditExpenseRequest):
@@ -363,8 +412,11 @@ async def edit_expense(expense_id: str, data: EditExpenseRequest):
         supabase.table("transacciones").update(update_data).eq("id", expense_id).execute()
         
         return {"success": True}
+    except HTTPException:
+        raise
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        print(f"Error editando gasto: {str(e)}")
+        return {"success": False, "error": "Error interno al editar el gasto"}
 
 if __name__ == "__main__":
     import uvicorn
