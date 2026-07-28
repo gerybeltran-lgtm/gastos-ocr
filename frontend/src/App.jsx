@@ -484,7 +484,7 @@ function App() {
            totalGastado += monto;
            ivaAcumulado += iva;
            
-           if (exp.tipo_transaccion === 'Gasto Sin Respaldo') {
+           if (exp.tipo_transaccion === 'Gasto Sin Respaldo' || exp.tipo_transaccion === 'Sin Respaldo') {
                fondosSinRespaldo += monto;
            }
 
