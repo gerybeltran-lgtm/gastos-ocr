@@ -111,6 +111,8 @@ function App() {
   const [filterDept, setFilterDept] = useState("");
   const [filterCostCenter, setFilterCostCenter] = useState("");
   const [filterUser, setFilterUser] = useState("");
+  const [filterEstado, setFilterEstado] = useState("");
+  const [filterTipo, setFilterTipo] = useState("");
   
   // Edit States
   const [editingExpense, setEditingExpense] = useState(null);
@@ -445,12 +447,16 @@ function App() {
 
   const uniqueCostCenters = [...new Set(expenses.map(exp => exp.centro_costo))].filter(Boolean).sort();
   const uniqueUsers = [...new Set(expenses.map(exp => exp.usuario_nombre))].filter(Boolean).sort();
+  const uniqueEstados = [...new Set(expenses.map(exp => exp.estado || 'Pendiente de Revisión'))].filter(Boolean).sort();
+  const uniqueTipos = [...new Set(expenses.map(exp => exp.tipo_transaccion || 'Boleta'))].filter(Boolean).sort();
 
   const filteredExpenses = expenses.filter(exp => {
     const matchDept = filterDept ? exp.departamento === filterDept : true;
     const matchCC = filterCostCenter ? exp.centro_costo === filterCostCenter : true;
     const matchUser = filterUser ? exp.usuario_nombre === filterUser : true;
-    return matchDept && matchCC && matchUser;
+    const matchEstado = filterEstado ? (exp.estado || 'Pendiente de Revisión') === filterEstado : true;
+    const matchTipo = filterTipo ? (exp.tipo_transaccion || 'Boleta') === filterTipo : true;
+    return matchDept && matchCC && matchUser && matchEstado && matchTipo;
   });
 
   // KPIs Financieros
@@ -1214,6 +1220,18 @@ function App() {
                       onChange={setFilterCostCenter}
                       className=""
                       options={[{value: '', label: 'Todos'}, ...uniqueCostCenters.map(cc => ({value: cc, label: cc}))]}
+                    />
+                    <HoverDropdown 
+                      label="Estado"
+                      value={filterEstado}
+                      onChange={setFilterEstado}
+                      options={[{value: '', label: 'Todos'}, ...uniqueEstados.map(e => ({value: e, label: e}))]}
+                    />
+                    <HoverDropdown 
+                      label="Tipo"
+                      value={filterTipo}
+                      onChange={setFilterTipo}
+                      options={[{value: '', label: 'Todos'}, ...uniqueTipos.map(t => ({value: t, label: t}))]}
                     />
                     <div className="flex items-end gap-2">
                       <button 
