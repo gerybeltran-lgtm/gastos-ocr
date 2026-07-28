@@ -105,15 +105,15 @@ from typing import List, Optional
 
 app = FastAPI(title="API Rendición de Gastos")
 
-_allowed_origins_raw = os.environ.get("ALLOWED_ORIGINS", "http://localhost:5173")
+_allowed_origins_raw = os.environ.get("ALLOWED_ORIGINS", "http://localhost:5173,https://gastos-ocr.vercel.app")
 ALLOWED_ORIGINS_LIST = [o.strip() for o in _allowed_origins_raw.split(",") if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS_LIST,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-User-Email"],
 )
 
 class EditExpenseRequest(BaseModel):
