@@ -32,48 +32,75 @@ def preprocess_image(input_path: str, output_path: str = "optimized_receipt.jpg"
     return output_path
 
 
-_vision_client = None
+# Variables globales
+_vision_creds = None
 
-def get_vision_client():
-    global _vision_client
-    if _vision_client is None:
+def get_vision_creds():
+    global _vision_creds
+    if _vision_creds is None:
         creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
         if creds_json:
             creds_info = json.loads(creds_json)
             if "private_key" in creds_info:
                 creds_info["private_key"] = creds_info["private_key"].replace('\\n', '\n')
             
-            # Forzamos los scopes para generar un OAuth token estándar, no un self-signed JWT.
             scopes = ['https://www.googleapis.com/auth/cloud-platform']
-            creds = service_account.Credentials.from_service_account_info(creds_info, scopes=scopes)
-            _vision_client = vision.ImageAnnotatorClient(credentials=creds, transport="rest")
-            _vision_client._debug_email = creds.service_account_email
+            _vision_creds = service_account.Credentials.from_service_account_info(creds_info, scopes=scopes)
         else:
-            # Fallback para desarrollo local (lee GOOGLE_APPLICATION_CREDENTIALS por defecto)
-            _vision_client = vision.ImageAnnotatorClient(transport="rest")
-            _vision_client._debug_email = "local-file"
-    return _vision_client
+            _vision_creds = None
+    return _vision_creds
 
 def extract_text_from_image(image_path: str) -> str:
-    """
-    Envía la imagen a Google Cloud Vision API y retorna el texto extraído (OCR).
-    """
-    client = get_vision_client()
+    creds = get_vision_creds()
+    if not creds:
+        # Fallback para local si no hay credenciales (usar application default credentials con google.auth.default)
+        import google.auth
+        creds, _ = google.auth.default(scopes=['https://www.googleapis.com/auth/cloud-platform'])
+        
+    # Obtener token OAuth
+    auth_request = google.auth.transport.requests.Request()
+    creds.refresh(auth_request)
+    token = creds.token
 
     with open(image_path, "rb") as image_file:
         content = image_file.read()
 
-    image = vision.Image(content=content)
+    url = "https://vision.googleapis.com/v1/images:annotate"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+    data = {
+        "requests": [
+            {
+                "image": {
+                    "content": base64.b64encode(content).decode("utf-8")
+                },
+                "features": [
+                    {
+                        "type": "DOCUMENT_TEXT_DETECTION"
+                    }
+                ]
+            }
+        ]
+    }
     
     try:
-        response = client.document_text_detection(image=image)
-        if response.error.message:
-            raise Exception(f"Error en Vision API: {response.error.message}")
+        response = requests.post(url, headers=headers, json=data)
+        if response.status_code != 200:
+            email = getattr(creds, 'service_account_email', 'unknown')
+            raise Exception(f"[{email}] Error en Vision API REST: {response.status_code} {response.text}")
+        
+        resp_json = response.json()
+        responses = resp_json.get("responses", [])
+        if not responses or "fullTextAnnotation" not in responses[0]:
+            return ""
+        return responses[0]["fullTextAnnotation"]["text"]
     except Exception as e:
-        email = getattr(client, '_debug_email', 'unknown')
-        raise Exception(f"[{email}] {str(e)}")
-
-    return response.full_text_annotation.text
+        email = getattr(creds, 'service_account_email', 'unknown')
+        if not isinstance(e, Exception) or not str(e).startswith(f"[{email}]"):
+            raise Exception(f"[{email}] {str(e)}")
+        raise e
 
 
 def parse_receipt_data(text: str) -> dict:
