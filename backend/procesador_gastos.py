@@ -1,7 +1,9 @@
 import cv2
 import re
 import os
+import json
 from google.cloud import vision
+from google.oauth2 import service_account
 
 def preprocess_image(input_path: str, output_path: str = "optimized_receipt.jpg") -> str:
     """
@@ -35,7 +37,19 @@ _vision_client = None
 def get_vision_client():
     global _vision_client
     if _vision_client is None:
-        _vision_client = vision.ImageAnnotatorClient()
+        creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
+        if creds_json:
+            try:
+                creds_info = json.loads(creds_json)
+                if "private_key" in creds_info:
+                    creds_info["private_key"] = creds_info["private_key"].replace('\\n', '\n')
+                creds = service_account.Credentials.from_service_account_info(creds_info)
+                _vision_client = vision.ImageAnnotatorClient(credentials=creds)
+            except Exception as e:
+                print(f"Error cargando credenciales Vision: {e}")
+                _vision_client = vision.ImageAnnotatorClient()
+        else:
+            _vision_client = vision.ImageAnnotatorClient()
     return _vision_client
 
 def extract_text_from_image(image_path: str) -> str:
