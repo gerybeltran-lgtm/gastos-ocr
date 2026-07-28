@@ -47,9 +47,11 @@ def get_vision_client():
             scopes = ['https://www.googleapis.com/auth/cloud-platform']
             creds = service_account.Credentials.from_service_account_info(creds_info, scopes=scopes)
             _vision_client = vision.ImageAnnotatorClient(credentials=creds, transport="rest")
+            _vision_client._debug_email = creds.service_account_email
         else:
             # Fallback para desarrollo local (lee GOOGLE_APPLICATION_CREDENTIALS por defecto)
             _vision_client = vision.ImageAnnotatorClient(transport="rest")
+            _vision_client._debug_email = "local-file"
     return _vision_client
 
 def extract_text_from_image(image_path: str) -> str:
@@ -63,10 +65,13 @@ def extract_text_from_image(image_path: str) -> str:
 
     image = vision.Image(content=content)
     
-    response = client.document_text_detection(image=image)
-
-    if response.error.message:
-        raise Exception(f"Error en Vision API: {response.error.message}")
+    try:
+        response = client.document_text_detection(image=image)
+        if response.error.message:
+            raise Exception(f"Error en Vision API: {response.error.message}")
+    except Exception as e:
+        email = getattr(client, '_debug_email', 'unknown')
+        raise Exception(f"[{email}] {str(e)}")
 
     return response.full_text_annotation.text
 
