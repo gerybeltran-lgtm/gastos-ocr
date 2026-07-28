@@ -230,6 +230,7 @@ async def upload_receipt(
             
         # 2. Preprocesar imagen con OpenCV
         ocr_error = False
+        ocr_error_msg = ""
         datos_estructurados = {}
         upload_target = temp_filepath
         
@@ -242,6 +243,7 @@ async def upload_receipt(
             except Exception as e:
                 print(f"OCR Error: {str(e)}")
                 ocr_error = True
+                ocr_error_msg = str(e)
         
         # 5. Subir la imagen procesada (u original) a Google Drive
         drive_link = upload_image_to_drive(upload_target, file.filename)
@@ -279,7 +281,7 @@ async def upload_receipt(
         if ocr_error:
             return {
                 "success": False,
-                "error": "Error de lectura",
+                "error": f"Error de lectura: {ocr_error_msg}",
                 "data": supabase_data
             }
         
