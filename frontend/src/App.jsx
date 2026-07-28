@@ -192,7 +192,7 @@ function App() {
         if (msg.includes('503') || msg.includes('unavailable')) {
           setError("El servidor está despertando. Por favor intenta de nuevo en unos segundos.");
         } else {
-          setError("Error de lectura en el archivo. Puedes reintentar o ingresar los datos manualmente.");
+          setError(msg || "Error de lectura en el archivo. Puedes reintentar o ingresar los datos manualmente.");
           if (response.data.data) {
             setFallbackData(response.data.data);
           }
