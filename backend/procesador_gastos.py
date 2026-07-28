@@ -39,16 +39,16 @@ def get_vision_client():
     if _vision_client is None:
         creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
         if creds_json:
-            try:
-                creds_info = json.loads(creds_json)
-                if "private_key" in creds_info:
-                    creds_info["private_key"] = creds_info["private_key"].replace('\\n', '\n')
-                creds = service_account.Credentials.from_service_account_info(creds_info)
-                _vision_client = vision.ImageAnnotatorClient(credentials=creds)
-            except Exception as e:
-                print(f"Error cargando credenciales Vision: {e}")
-                _vision_client = vision.ImageAnnotatorClient()
+            creds_info = json.loads(creds_json)
+            if "private_key" in creds_info:
+                creds_info["private_key"] = creds_info["private_key"].replace('\\n', '\n')
+            
+            # Forzamos los scopes para generar un OAuth token estándar, no un self-signed JWT.
+            scopes = ['https://www.googleapis.com/auth/cloud-platform']
+            creds = service_account.Credentials.from_service_account_info(creds_info, scopes=scopes)
+            _vision_client = vision.ImageAnnotatorClient(credentials=creds)
         else:
+            # Fallback para desarrollo local (lee GOOGLE_APPLICATION_CREDENTIALS por defecto)
             _vision_client = vision.ImageAnnotatorClient()
     return _vision_client
 
