@@ -87,8 +87,14 @@ cred_path = os.path.join(BASE_DIR, 'credentials.json')
 
 # Si estamos en Render u otra nube, podemos pasar el JSON como string en una variable de entorno
 if os.environ.get("GOOGLE_CREDENTIALS_JSON"):
-    with open(cred_path, "w") as f:
-        f.write(os.environ.get("GOOGLE_CREDENTIALS_JSON"))
+    try:
+        creds_data = json.loads(os.environ.get("GOOGLE_CREDENTIALS_JSON"))
+        if "private_key" in creds_data:
+            creds_data["private_key"] = creds_data["private_key"].replace('\\n', '\n')
+        with open(cred_path, "w") as f:
+            json.dump(creds_data, f)
+    except Exception as e:
+        print("Error al escribir credentials.json:", e)
 
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = cred_path
 
