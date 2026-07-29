@@ -69,12 +69,12 @@ def extract_text_from_image(image_path: str) -> str:
         creds, _ = google.auth.default(scopes=['https://www.googleapis.com/auth/cloud-platform'])
         
     # Obtener token OAuth usando httplib2 (porque requests falla en Render con Invalid JWT)
-    import google.auth.transport.httplib2
+    import google_auth_httplib2
     import httplib2
     
     try:
         http_client = httplib2.Http()
-        auth_request = google.auth.transport.httplib2.Request(http_client)
+        auth_request = google_auth_httplib2.Request(http_client)
         creds.refresh(auth_request)
         token = creds.token
     except Exception as e:
