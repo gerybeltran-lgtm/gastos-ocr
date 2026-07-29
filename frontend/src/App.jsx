@@ -755,7 +755,7 @@ function App() {
                           <input type="number" value={reviewData.monto_total} onChange={(e) => {
                               const val = parseFloat(e.target.value) || 0;
                               const applyIva = transactionType === 'Factura' || transactionType === 'Nota de Crédito';
-                              setReviewData({...reviewData, monto_total: val, iva: applyIva ? Math.round(val * 0.19) : 0});
+                              setReviewData({...reviewData, monto_total: val, iva: applyIva ? Math.round((val * 19) / 119) : 0});
                             }} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold text-sky-600" />
                         </div>
                         {(transactionType === 'Factura' || transactionType === 'Nota de Crédito') && (

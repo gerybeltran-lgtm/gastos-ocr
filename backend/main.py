@@ -328,7 +328,8 @@ async def upload_receipt(
         monto_str = str(datos_estructurados.get("monto_total", "0")).replace(".", "").replace(",", "")
         try:
             monto_int = int(monto_str)
-            iva = round(monto_int * 0.19)
+            # IVA en Chile es 19% sobre el Neto. Si tenemos el Total (Bruto), el IVA es Total * 19 / 119.
+            iva = round((monto_int * 19) / 119)
         except:
             monto_int = 0
             iva = 0
@@ -473,9 +474,9 @@ async def edit_expense(expense_id: str, data: EditExpenseRequest):
             
         old_expense = response.data[0]
         
-        # Calcular nuevo IVA
+        # Calcular nuevo IVA (desde el Monto Total Bruto)
         nuevo_monto = data.monto_total
-        nuevo_iva = round(nuevo_monto * 0.19)
+        nuevo_iva = round((nuevo_monto * 19) / 119)
         
         # Actualizar Supabase
         update_data = {
