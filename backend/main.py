@@ -125,8 +125,8 @@ app.add_middleware(
 class EditExpenseRequest(BaseModel):
     departamento: str
     centro_costo: str
-    rut_proveedor: str
-    fecha_boleta: str
+    rut_proveedor: Optional[str] = ""
+    fecha_boleta: Optional[str] = None
     monto_total: float
     tipo_transaccion: Optional[str] = "Boleta"
     origen_fondos: Optional[str] = "Caja Principal"
@@ -141,8 +141,8 @@ class SaveExpenseRequest(BaseModel):
     usuario_email: str
     departamento: str
     centro_costo: str
-    rut_proveedor: str
-    fecha_boleta: str
+    rut_proveedor: Optional[str] = ""
+    fecha_boleta: Optional[str] = None
     monto_total: float
     iva: float
     link_drive: str
