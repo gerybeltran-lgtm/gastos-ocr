@@ -211,6 +211,29 @@ async def debug_creds():
             if root_data[k] != env_data[k]:
                 info[f"diff_key_{k}"] = True
                 
+    if info["exact_dict_match"]:
+        import google.auth.transport.requests
+        from google.oauth2 import service_account
+        
+        info["test_tokens"] = {}
+        request = google.auth.transport.requests.Request()
+        
+        try:
+            creds_drive = service_account.Credentials.from_service_account_info(
+                root_data, scopes=['https://www.googleapis.com/auth/drive.file', 'https://www.googleapis.com/auth/spreadsheets'])
+            creds_drive.refresh(request)
+            info["test_tokens"]["drive"] = "SUCCESS"
+        except Exception as e:
+            info["test_tokens"]["drive"] = str(e)
+            
+        try:
+            creds_vision = service_account.Credentials.from_service_account_info(
+                root_data, scopes=['https://www.googleapis.com/auth/cloud-platform'])
+            creds_vision.refresh(request)
+            info["test_tokens"]["vision"] = "SUCCESS"
+        except Exception as e:
+            info["test_tokens"]["vision"] = str(e)
+            
     return info
 
 @app.post("/upload-receipt")
