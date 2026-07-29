@@ -42,10 +42,14 @@ _vision_creds = None
 def get_vision_creds():
     global _vision_creds
     if _vision_creds is None:
-        cred_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "credentials.json")
-        if os.path.exists(cred_path):
+        creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
+        if creds_json:
+            creds_info = json.loads(creds_json)
+            if "private_key" in creds_info:
+                creds_info["private_key"] = creds_info["private_key"].replace('\\n', '\n')
+            
             scopes = ['https://www.googleapis.com/auth/cloud-platform']
-            _vision_creds = service_account.Credentials.from_service_account_file(cred_path, scopes=scopes)
+            _vision_creds = service_account.Credentials.from_service_account_info(creds_info, scopes=scopes)
         else:
             _vision_creds = None
     return _vision_creds
