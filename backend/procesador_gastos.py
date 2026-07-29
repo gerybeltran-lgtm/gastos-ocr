@@ -42,16 +42,24 @@ _vision_creds = None
 def get_vision_creds():
     global _vision_creds
     if _vision_creds is None:
-        creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
-        if creds_json:
-            creds_info = json.loads(creds_json)
-            if "private_key" in creds_info:
-                creds_info["private_key"] = creds_info["private_key"].replace('\\n', '\n')
-            
-            scopes = ['https://www.googleapis.com/auth/cloud-platform']
-            _vision_creds = service_account.Credentials.from_service_account_info(creds_info, scopes=scopes)
+        RENDER_SECRET_FILE = '/etc/secrets/credentials.json'
+        LOCAL_CREDENTIALS_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'credentials.json')
+        scopes = ['https://www.googleapis.com/auth/cloud-platform']
+        
+        if os.path.exists(RENDER_SECRET_FILE):
+            _vision_creds = service_account.Credentials.from_service_account_file(RENDER_SECRET_FILE, scopes=scopes)
         else:
-            _vision_creds = None
+            creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
+            if creds_json:
+                creds_info = json.loads(creds_json)
+                if "private_key" in creds_info:
+                    creds_info["private_key"] = creds_info["private_key"].replace('\\n', '\n')
+                
+                _vision_creds = service_account.Credentials.from_service_account_info(creds_info, scopes=scopes)
+            elif os.path.exists(LOCAL_CREDENTIALS_FILE):
+                _vision_creds = service_account.Credentials.from_service_account_file(LOCAL_CREDENTIALS_FILE, scopes=scopes)
+            else:
+                _vision_creds = None
     return _vision_creds
 
 def extract_text_from_image(image_path: str) -> str:
