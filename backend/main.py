@@ -211,32 +211,39 @@ async def debug_creds():
             if root_data[k] != env_data[k]:
                 info[f"diff_key_{k}"] = True
                 
+    info["render_secret_file_exists"] = os.path.exists('/etc/secrets/credentials.json')
+    if info["render_secret_file_exists"]:
+        with open('/etc/secrets/credentials.json', 'r') as f:
+            try:
+                secret_data = json.load(f)
+                info["secret_data_matches_env"] = (secret_data == env_data)
+            except Exception as e:
+                info["secret_data_err"] = str(e)
+                
     if info["exact_dict_match"]:
         import google.auth.transport.requests
-        import google.auth.transport.httplib2
-        import httplib2
         from google.oauth2 import service_account
         
         info["test_tokens"] = {}
-        req_requests = google.auth.transport.requests.Request()
-        req_httplib2 = google.auth.transport.httplib2.Request(httplib2.Http())
+        request = google.auth.transport.requests.Request()
         
         try:
-            creds = service_account.Credentials.from_service_account_info(
-                root_data, scopes=['https://www.googleapis.com/auth/cloud-platform'])
-            creds.refresh(req_requests)
-            info["test_tokens"]["requests"] = "SUCCESS"
+            creds_drive = service_account.Credentials.from_service_account_info(
+                root_data, scopes=['https://www.googleapis.com/auth/drive.file', 'https://www.googleapis.com/auth/spreadsheets'])
+            creds_drive.refresh(request)
+            info["test_tokens"]["drive"] = "SUCCESS"
         except Exception as e:
-            info["test_tokens"]["requests"] = str(e)
+            info["test_tokens"]["drive"] = str(e)
             
-        try:
-            creds2 = service_account.Credentials.from_service_account_info(
-                root_data, scopes=['https://www.googleapis.com/auth/cloud-platform'])
-            creds2.refresh(req_httplib2)
-            info["test_tokens"]["httplib2"] = "SUCCESS"
-        except Exception as e:
-            info["test_tokens"]["httplib2"] = str(e)
-            
+        if info.get("secret_data_matches_env") is False:
+            try:
+                creds_secret = service_account.Credentials.from_service_account_info(
+                    secret_data, scopes=['https://www.googleapis.com/auth/cloud-platform'])
+                creds_secret.refresh(request)
+                info["test_tokens"]["secret_file_vision"] = "SUCCESS"
+            except Exception as e:
+                info["test_tokens"]["secret_file_vision"] = str(e)
+                
     return info
 
 @app.post("/upload-receipt")
@@ -377,7 +384,7 @@ async def save_receipt(data: SaveExpenseRequest, background_tasks: BackgroundTas
             "departamento": data.departamento,
             "centro_costo": data.centro_costo,
             "rut_proveedor": data.rut_proveedor,
-            "fecha_boleta": data.fecha_boleta,
+            "fecha_boleta": data.fecha_boleta if data.fecha_boleta else None,
             "monto_total": data.monto_total,
             "iva": data.iva,
             "link_drive": data.link_drive,
@@ -475,7 +482,7 @@ async def edit_expense(expense_id: str, data: EditExpenseRequest):
             "departamento": data.departamento,
             "centro_costo": data.centro_costo,
             "rut_proveedor": data.rut_proveedor,
-            "fecha_boleta": data.fecha_boleta,
+            "fecha_boleta": data.fecha_boleta if data.fecha_boleta else None,
             "monto_total": nuevo_monto,
             "iva": nuevo_iva,
             "tipo_transaccion": data.tipo_transaccion,
