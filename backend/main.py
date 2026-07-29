@@ -213,26 +213,29 @@ async def debug_creds():
                 
     if info["exact_dict_match"]:
         import google.auth.transport.requests
+        import google.auth.transport.httplib2
+        import httplib2
         from google.oauth2 import service_account
         
         info["test_tokens"] = {}
-        request = google.auth.transport.requests.Request()
+        req_requests = google.auth.transport.requests.Request()
+        req_httplib2 = google.auth.transport.httplib2.Request(httplib2.Http())
         
         try:
-            creds_drive = service_account.Credentials.from_service_account_info(
-                root_data, scopes=['https://www.googleapis.com/auth/drive.file', 'https://www.googleapis.com/auth/spreadsheets'])
-            creds_drive.refresh(request)
-            info["test_tokens"]["drive"] = "SUCCESS"
+            creds = service_account.Credentials.from_service_account_info(
+                root_data, scopes=['https://www.googleapis.com/auth/cloud-platform'])
+            creds.refresh(req_requests)
+            info["test_tokens"]["requests"] = "SUCCESS"
         except Exception as e:
-            info["test_tokens"]["drive"] = str(e)
+            info["test_tokens"]["requests"] = str(e)
             
         try:
-            creds_vision = service_account.Credentials.from_service_account_info(
+            creds2 = service_account.Credentials.from_service_account_info(
                 root_data, scopes=['https://www.googleapis.com/auth/cloud-platform'])
-            creds_vision.refresh(request)
-            info["test_tokens"]["vision"] = "SUCCESS"
+            creds2.refresh(req_httplib2)
+            info["test_tokens"]["httplib2"] = "SUCCESS"
         except Exception as e:
-            info["test_tokens"]["vision"] = str(e)
+            info["test_tokens"]["httplib2"] = str(e)
             
     return info
 
