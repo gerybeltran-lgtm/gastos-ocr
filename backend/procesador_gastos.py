@@ -160,9 +160,15 @@ def parse_receipt_data(text: str) -> dict:
         montos_encontrados = re.findall(r'\$\s*([\d\.]+)', text)
         
     if montos_encontrados:
-        posible_total = montos_encontrados[-1].replace('.', '').strip()
-        if posible_total.isdigit():
-            datos["monto_total"] = int(posible_total)
+        valores_validos = []
+        for m in montos_encontrados:
+            val_str = m.replace('.', '').strip()
+            if val_str.isdigit():
+                valores_validos.append(int(val_str))
+        
+        if valores_validos:
+            # Para boletas chilenas, si hay varios montos (como el IVA al final), el Total suele ser el mayor.
+            datos["monto_total"] = max(valores_validos)
 
     return datos
 
