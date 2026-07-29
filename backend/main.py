@@ -181,36 +181,35 @@ async def debug_creds():
         "env_var_exists": bool(env_cred),
     }
     
-    root_pk = None
-    env_pk = None
+    root_data = {}
+    env_data = {}
     
     if os.path.exists(root_cred):
         with open(root_cred, "r") as f:
             try:
-                data = json.load(f)
-                root_pk = data.get("private_key", "")
-                info["root_file_pk_len"] = len(root_pk)
+                root_data = json.load(f)
             except Exception as e:
                 info["root_file_err"] = str(e)
                 
     if env_cred:
         try:
-            data = json.loads(env_cred)
-            env_pk = data.get("private_key", "")
-            env_pk = env_pk.replace('\\n', '\n')
-            info["env_pk_len"] = len(env_pk)
+            env_data = json.loads(env_cred)
+            if "private_key" in env_data:
+                env_data["private_key"] = env_data["private_key"].replace('\\n', '\n')
         except Exception as e:
             info["env_err"] = str(e)
             
-    info["pk_exact_match"] = (root_pk == env_pk)
-    if not info["pk_exact_match"] and root_pk and env_pk:
-        # Find exactly where they differ
-        for i in range(min(len(root_pk), len(env_pk))):
-            if root_pk[i] != env_pk[i]:
-                info["diff_at"] = i
-                info["root_char"] = repr(root_pk[i])
-                info["env_char"] = repr(env_pk[i])
-                break
+    info["exact_dict_match"] = (root_data == env_data)
+    
+    if not info["exact_dict_match"]:
+        root_keys = set(root_data.keys())
+        env_keys = set(env_data.keys())
+        info["missing_in_env"] = list(root_keys - env_keys)
+        info["missing_in_root"] = list(env_keys - root_keys)
+        
+        for k in root_keys.intersection(env_keys):
+            if root_data[k] != env_data[k]:
+                info[f"diff_key_{k}"] = True
                 
     return info
 
