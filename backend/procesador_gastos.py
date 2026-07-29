@@ -92,7 +92,8 @@ def extract_text_from_image(image_path: str) -> str:
         response = requests.post(url, headers=headers, json=data)
         if response.status_code != 200:
             email = getattr(creds, 'service_account_email', 'unknown')
-            raise Exception(f"[{email}] Error en Vision API REST: {response.status_code} {response.text}")
+            token_prefix = token[:10] if token else "None"
+            raise Exception(f"[{email}] Error en Vision API REST (Token:{token_prefix}): {response.status_code} {response.text}")
         
         resp_json = response.json()
         responses = resp_json.get("responses", [])
