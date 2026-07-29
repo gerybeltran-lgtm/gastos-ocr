@@ -171,6 +171,35 @@ def _validate_uploaded_file(file: UploadFile) -> None:
     if file.content_type and file.content_type not in ALLOWED_MIME_TYPES:
         raise HTTPException(status_code=400, detail="Tipo de archivo no permitido")
 
+@app.get("/debug-creds")
+async def debug_creds():
+    root_cred = os.path.join(os.path.dirname(os.path.dirname(__file__)), "credentials.json")
+    env_cred = os.environ.get("GOOGLE_CREDENTIALS_JSON")
+    
+    info = {
+        "root_file_exists": os.path.exists(root_cred),
+        "env_var_exists": bool(env_cred),
+    }
+    
+    if os.path.exists(root_cred):
+        with open(root_cred, "r") as f:
+            try:
+                data = json.load(f)
+                info["root_file_pk_len"] = len(data.get("private_key", ""))
+            except Exception as e:
+                info["root_file_err"] = str(e)
+                
+    if env_cred:
+        try:
+            data = json.loads(env_cred)
+            pk = data.get("private_key", "")
+            pk = pk.replace('\\n', '\n')
+            info["env_pk_len"] = len(pk)
+        except Exception as e:
+            info["env_err"] = str(e)
+            
+    return info
+
 @app.post("/upload-receipt")
 async def upload_receipt(
     file: UploadFile = File(...),
