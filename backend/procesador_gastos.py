@@ -4,6 +4,7 @@ import os
 import json
 from google.cloud import vision
 from google.oauth2 import service_account
+import google.auth
 import google.auth.transport.requests
 import requests
 import base64
@@ -57,7 +58,6 @@ def extract_text_from_image(image_path: str) -> str:
     creds = get_vision_creds()
     if not creds:
         # Fallback para local si no hay credenciales (usar application default credentials con google.auth.default)
-        import google.auth
         creds, _ = google.auth.default(scopes=['https://www.googleapis.com/auth/cloud-platform'])
         
     # Obtener token OAuth
