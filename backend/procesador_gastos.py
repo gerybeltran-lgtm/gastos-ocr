@@ -60,19 +60,28 @@ def extract_text_from_image(image_path: str) -> str:
         # Fallback para local si no hay credenciales (usar application default credentials con google.auth.default)
         creds, _ = google.auth.default(scopes=['https://www.googleapis.com/auth/cloud-platform'])
         
-    # Obtener token OAuth
-    auth_request = google.auth.transport.requests.Request()
-    creds.refresh(auth_request)
-    token = creds.token
-
-    with open(image_path, "rb") as image_file:
-        content = image_file.read()
-
+    # Obtener token OAuth usando httplib2 (porque requests falla en Render con Invalid JWT)
+    import google.auth.transport.httplib2
+    import httplib2
+    
+    try:
+        http_client = httplib2.Http()
+        auth_request = google.auth.transport.httplib2.Request(http_client)
+        creds.refresh(auth_request)
+        token = creds.token
+    except Exception as e:
+        email = getattr(creds, 'service_account_email', 'unknown')
+        raise Exception(f"[{email}] Error refrescando token: {str(e)}")
+        
     url = "https://vision.googleapis.com/v1/images:annotate"
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json"
     }
+
+    with open(image_path, "rb") as image_file:
+        content = image_file.read()
+
     data = {
         "requests": [
             {
