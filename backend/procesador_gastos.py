@@ -4,6 +4,9 @@ import os
 import json
 from google.cloud import vision
 from google.oauth2 import service_account
+import google.auth.transport.requests
+import requests
+import base64
 
 def preprocess_image(input_path: str, output_path: str = "optimized_receipt.jpg") -> str:
     """
