@@ -144,7 +144,11 @@ def parse_receipt_data(text: str) -> dict:
     fecha_pattern = r'\b(0[1-9]|[12][0-9]|3[01])[-/](0[1-9]|1[012])[-/](20\d\d)\b'
     fecha_match = re.search(fecha_pattern, text)
     if fecha_match:
-        datos["fecha"] = fecha_match.group(0)
+        # Convertir a YYYY-MM-DD para compatibilidad con HTML input type="date" y PostgreSQL
+        day = fecha_match.group(1)
+        month = fecha_match.group(2)
+        year = fecha_match.group(3)
+        datos["fecha"] = f"{year}-{month}-{day}"
 
     # 3. Extraer Monto Total
     # Estrategia 1: Buscar TOTAL explícito (ignorando SUB-TOTAL) en la misma línea
