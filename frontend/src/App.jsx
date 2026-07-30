@@ -361,7 +361,9 @@ function App() {
       centro_costo: exp.centro_costo,
       rut_proveedor: exp.rut_proveedor,
       fecha_boleta: exp.fecha_boleta,
-      monto_total: exp.monto_total
+      fecha_boleta: exp.fecha_boleta,
+      monto_total: exp.monto_total,
+      estado: exp.estado || 'Pendiente de Revisión'
     });
   };
 
@@ -1397,6 +1399,14 @@ function App() {
                       <div>
                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Monto Total ($)</label>
                         <input type="number" value={editForm.monto_total} onChange={e => setEditForm({...editForm, monto_total: e.target.value})} className="w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all p-3 rounded-xl font-bold text-lg text-[#0284c7]" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Estado</label>
+                        <select value={editForm.estado} onChange={e => setEditForm({...editForm, estado: e.target.value})} className="w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all p-3 rounded-xl font-bold">
+                          <option value="Pendiente de Revisión">Pendiente de Revisión</option>
+                          <option value="Aprobada">Aprobada</option>
+                          <option value="Rechazada">Rechazada</option>
+                        </select>
                       </div>
                       <div className="pt-6">
                         <button onClick={handleEditSubmit} className="bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition-colors shadow-sm font-bold tracking-wide w-full py-3.5 rounded-xl text-lg flex justify-center items-center gap-2">
