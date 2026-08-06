@@ -130,6 +130,9 @@ class EditExpenseRequest(BaseModel):
     monto_total: float
     tipo_transaccion: Optional[str] = "Boleta"
     origen_fondos: Optional[str] = "Caja Principal"
+    monto_caja: float = 0
+    monto_nc: float = 0
+    clasificacion_sin_respaldo: Optional[str] = None
     estado: Optional[str] = "Pendiente de Revisión"
     factura_asociada: Optional[str] = ""
     comentarios_revisor: Optional[str] = ""
@@ -148,6 +151,9 @@ class SaveExpenseRequest(BaseModel):
     link_drive: str
     tipo_transaccion: Optional[str] = "Boleta"
     origen_fondos: Optional[str] = "Caja Principal"
+    monto_caja: float = 0
+    monto_nc: float = 0
+    clasificacion_sin_respaldo: Optional[str] = None
     estado: Optional[str] = "Pendiente de Revisión"
     factura_asociada: Optional[str] = ""
     comentarios_revisor: Optional[str] = ""
@@ -392,6 +398,9 @@ async def save_receipt(data: SaveExpenseRequest, background_tasks: BackgroundTas
             "fecha_captura": fecha_captura,
             "tipo_transaccion": data.tipo_transaccion,
             "origen_fondos": data.origen_fondos,
+            "monto_caja": data.monto_caja,
+            "monto_nc": data.monto_nc,
+            "clasificacion_sin_respaldo": data.clasificacion_sin_respaldo,
             "estado": data.estado,
             "factura_asociada": data.factura_asociada,
             "comentarios_revisor": data.comentarios_revisor,
@@ -425,6 +434,17 @@ async def history(email: str):
     except Exception as e:
         print(f"Error obteniendo historial: {str(e)}")
         return {"success": False, "error": "Error interno al obtener el historial"}
+
+@app.get("/capital/{email}")
+async def get_capital(email: str):
+    try:
+        response = supabase.table("capital_entregado").select("monto_asignado").eq("email_usuario", email).execute()
+        if response.data:
+            return {"success": True, "monto_asignado": response.data[0]["monto_asignado"]}
+        return {"success": True, "monto_asignado": 0}
+    except Exception as e:
+        print(f"Error obteniendo capital: {str(e)}")
+        return {"success": False, "error": "Error interno al obtener capital"}
 
 @app.get("/admin/history")
 async def admin_history(request: Request, email: str):
@@ -488,6 +508,9 @@ async def edit_expense(expense_id: str, data: EditExpenseRequest):
             "iva": nuevo_iva,
             "tipo_transaccion": data.tipo_transaccion,
             "origen_fondos": data.origen_fondos,
+            "monto_caja": data.monto_caja,
+            "monto_nc": data.monto_nc,
+            "clasificacion_sin_respaldo": data.clasificacion_sin_respaldo,
             "estado": data.estado,
             "factura_asociada": data.factura_asociada,
             "comentarios_revisor": data.comentarios_revisor,

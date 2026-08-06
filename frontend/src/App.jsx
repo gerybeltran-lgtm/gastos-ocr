@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Camera, Upload, CheckCircle, FileText, RefreshCcw, DollarSign, Calendar, Hash, User, ShieldAlert, History, Filter, Edit2, Trash2, X, PieChart, Users, Building2, BarChart3, ArrowRight, LogOut, AlertTriangle, ArrowDownCircle, Wallet, AlertCircle, HelpCircle, ChevronDown } from 'lucide-react';
+import { Camera, Upload, CheckCircle, FileText, RefreshCcw, DollarSign, Calendar, Hash, User, ShieldAlert, History, Filter, Edit2, Trash2, X, PieChart, Users, Building2, BarChart3, ArrowRight, LogOut, AlertTriangle, ArrowDownCircle, Wallet, AlertCircle, HelpCircle, ChevronDown, HardDriveDownload } from 'lucide-react';
 import { useGoogleLogin } from '@react-oauth/google';
 import { jwtDecode } from 'jwt-decode';
 import axios from 'axios';
@@ -91,6 +91,10 @@ function App() {
   const [adminSearchQuery, setAdminSearchQuery] = useState('');
   const [transactionType, setTransactionType] = useState(null);
   const [origenFondos, setOrigenFondos] = useState('');
+  const [montoCaja, setMontoCaja] = useState('');
+  const [montoNC, setMontoNC] = useState('');
+  const [clasificacionSinRespaldo, setClasificacionSinRespaldo] = useState('');
+  const [capitalEntregado, setCapitalEntregado] = useState(0);
   const [facturaAsociada, setFacturaAsociada] = useState('');
   const [descripcion, setDescripcion] = useState('');
   const [file, setFile] = useState(null);
@@ -236,7 +240,17 @@ function App() {
         }
       }
 
-      const payload = { ...reviewData, link_drive: finalLinkDrive, tipo_transaccion: transactionType, origen_fondos: origenFondos, factura_asociada: facturaAsociada, descripcion: descripcion };
+      const payload = { 
+        ...reviewData, 
+        link_drive: finalLinkDrive, 
+        tipo_transaccion: transactionType, 
+        origen_fondos: origenFondos, 
+        monto_caja: montoCaja ? parseFloat(montoCaja) : 0,
+        monto_nc: montoNC ? parseFloat(montoNC) : 0,
+        clasificacion_sin_respaldo: clasificacionSinRespaldo,
+        factura_asociada: facturaAsociada, 
+        descripcion: descripcion 
+      };
       const response = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/save-receipt`, payload);
       if (response.data.success) {
         setResult(response.data.data);
@@ -310,6 +324,21 @@ function App() {
       setLoadingHistory(false);
     }
   };
+
+  useEffect(() => {
+    if (user && activeTab !== 'admin') {
+      const fetchCapital = async () => {
+        try {
+          const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+          const res = await axios.get(`${API_URL}/capital/${encodeURIComponent(user.email)}`);
+          if (res.data.success) setCapitalEntregado(parseFloat(res.data.monto_asignado) || 0);
+        } catch (e) {
+          console.error("Error fetching capital", e);
+        }
+      };
+      fetchCapital();
+    }
+  }, [user, activeTab]);
 
   useEffect(() => {
     if ((activeTab === 'history' || activeTab === 'admin') && user) {
@@ -463,54 +492,79 @@ function App() {
 
   // KPIs Financieros
   const finanzas = useMemo(() => {
-    let fondosDisponibles = 0;
+    let fondosDisponibles = activeTab === 'admin' ? 0 : capitalEntregado; // Si es admin, podríamos sumar todo el capital, pero mejor empezar en 0 y sumar ingresos
+    let enTramiteCaja = 0;
     let saldosAFavor = 0;
+    let enTramiteNC = 0;
     let totalGastado = 0;
     let ivaAcumulado = 0;
     let fondosSinRespaldo = 0;
     
     filteredExpenses.forEach(exp => {
       const monto = parseFloat(exp.monto_total) || 0;
+      const mCaja = parseFloat(exp.monto_caja) || 0;
+      const mNC = parseFloat(exp.monto_nc) || 0;
       const iva = parseFloat(exp.iva) || 0;
+      const isApproved = exp.estado === 'Aprobado' || exp.estado === 'Aprobada';
+      const isPending = exp.estado === 'Pendiente de Revisión' || exp.estado === 'Pendiente';
+      const isRejected = exp.estado === 'Rechazado' || exp.estado === 'Rechazada';
       
+      if (isRejected) return;
+
       // Ingresos a la Caja Principal
       if (exp.tipo_transaccion === 'Saldo Inicial' || exp.tipo_transaccion === 'Ingreso de Dinero') {
-        if (exp.estado !== 'Rechazado') {
-          fondosDisponibles += monto;
-        }
+        if (isApproved) fondosDisponibles += monto;
       } 
       // Notas de Crédito
       else if (exp.tipo_transaccion === 'Nota de Crédito') {
-        if (exp.estado !== 'Rechazado') {
+        if (isApproved) {
           saldosAFavor += monto;
           ivaAcumulado += iva;
         }
       }
       // Gastos (Boleta, Factura, Sin Respaldo)
       else {
-        if (exp.estado !== 'Rechazado') {
+        // Acumular el total gastado (Aprobado)
+        if (isApproved) {
            totalGastado += monto;
            ivaAcumulado += iva;
-           
-           if (exp.tipo_transaccion === 'Gasto Sin Respaldo' || exp.tipo_transaccion === 'Sin Respaldo') {
-               fondosSinRespaldo += monto;
-           }
+        }
 
-           if (exp.origen_fondos === 'Caja Principal' || !exp.origen_fondos) {
-              fondosDisponibles -= monto;
-           } else if (exp.origen_fondos === 'Casa Comercial') {
-              saldosAFavor -= monto;
-           }
+        if (exp.tipo_transaccion === 'Gasto Sin Respaldo' || exp.tipo_transaccion === 'Sin Respaldo') {
+            if (isApproved) fondosSinRespaldo += monto;
+        }
+
+        let deducirCaja = 0;
+        let deducirNC = 0;
+
+        if (exp.origen_fondos === 'Fondos Mixtos') {
+            deducirCaja = mCaja;
+            deducirNC = mNC;
+        } else if (exp.origen_fondos === 'Casa Comercial') {
+            deducirNC = monto;
+        } else {
+            // Default a Caja Principal
+            deducirCaja = monto;
+        }
+
+        if (isApproved) {
+            fondosDisponibles -= deducirCaja;
+            saldosAFavor -= deducirNC;
+        } else if (isPending) {
+            enTramiteCaja += deducirCaja;
+            enTramiteNC += deducirNC;
         }
       }
     });
     
-    return { fondosDisponibles, saldosAFavor, totalGastado, ivaAcumulado, fondosSinRespaldo };
-  }, [filteredExpenses]);
+    return { fondosDisponibles, enTramiteCaja, saldosAFavor, enTramiteNC, totalGastado, ivaAcumulado, fondosSinRespaldo };
+  }, [filteredExpenses, capitalEntregado, activeTab]);
 
   const totalSpent = finanzas.totalGastado;
   const fondosDisponibles = finanzas.fondosDisponibles;
+  const enTramiteCaja = finanzas.enTramiteCaja;
   const saldosAFavor = finanzas.saldosAFavor;
+  const enTramiteNC = finanzas.enTramiteNC;
   const ivaAcumulado = finanzas.ivaAcumulado;
   const fondosSinRespaldo = finanzas.fondosSinRespaldo;
   const totalInvoices = filteredExpenses.length;
@@ -773,14 +827,43 @@ function App() {
                         <input type="date" value={reviewData.fecha_boleta} onChange={(e) => setReviewData({...reviewData, fecha_boleta: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm" />
                       </div>
 
+                      {origenFondos === 'Fondos Mixtos' && (
+                        <>
+                          <div className="pt-2 border-t border-slate-100 mt-4">
+                            <label className="block text-xs font-bold text-emerald-600 mb-1 uppercase">Monto pagado desde Caja Principal</label>
+                            <input type="number" value={montoCaja} onChange={(e) => setMontoCaja(e.target.value)} placeholder="Ej: 50000" className="w-full bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 text-sm font-bold" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-purple-600 mb-1 uppercase">Monto cubierto por Casa Comercial (NC)</label>
+                            <input type="number" value={montoNC} onChange={(e) => setMontoNC(e.target.value)} placeholder="Ej: 20000" className="w-full bg-purple-50 border border-purple-200 rounded-lg px-3 py-2 text-sm font-bold" />
+                          </div>
+                        </>
+                      )}
+
+                      {transactionType === 'Sin Respaldo' && (
+                        <div className="pt-2 border-t border-slate-100 mt-4">
+                          <label className="block text-xs font-bold text-rose-500 mb-1 uppercase">Clasificación Sin Respaldo (Obligatorio)</label>
+                          <select 
+                            value={clasificacionSinRespaldo} 
+                            onChange={(e) => setClasificacionSinRespaldo(e.target.value)} 
+                            className="w-full bg-rose-50 border border-rose-200 rounded-lg px-3 py-2 text-sm font-bold outline-none"
+                          >
+                            <option value="" disabled>Seleccione Clasificación...</option>
+                            <option value="Viáticos">Viáticos</option>
+                            <option value="Bonos por Movilización">Bonos por Movilización</option>
+                            <option value="Otros Gastos Operativos">Otros Gastos Operativos</option>
+                          </select>
+                        </div>
+                      )}
+
                       <div className="pt-2 border-t border-slate-100 mt-4">
-                        <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Observaciones</label>
+                        <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Observaciones {transactionType === 'Sin Respaldo' && <span className="text-rose-500">(Obligatorio)</span>}</label>
                         <textarea 
                           value={descripcion}
                           onChange={(e) => setDescripcion(e.target.value)}
-                          placeholder="Opcional. Describe el motivo o detalles del gasto..."
+                          placeholder={transactionType === 'Sin Respaldo' ? "Justificación mandatoria para Finanzas..." : "Opcional. Describe el motivo o detalles del gasto..."}
                           rows="2"
-                          className="w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 transition-all text-sm"
+                          className={`w-full bg-white border ${transactionType === 'Sin Respaldo' && !descripcion ? 'border-rose-300' : 'border-slate-300'} rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 transition-all text-sm`}
                         ></textarea>
                       </div>
 
@@ -808,8 +891,8 @@ function App() {
 
                     <button 
                       onClick={handleSaveReceipt}
-                      disabled={isSaving || (transactionType === 'Nota de Crédito' && !facturaAsociada.trim()) || (['Boleta', 'Factura', 'Sin Respaldo'].includes(transactionType) && !origenFondos)}
-                      className={`mt-8 w-full py-4 rounded-xl font-bold flex items-center justify-center gap-3 text-lg ${isSaving || (transactionType === 'Nota de Crédito' && !facturaAsociada.trim()) || (['Boleta', 'Factura', 'Sin Respaldo'].includes(transactionType) && !origenFondos) ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-sm tracking-wide transition-colors'}`}
+                      disabled={isSaving || (transactionType === 'Nota de Crédito' && !facturaAsociada.trim()) || (transactionType === 'Sin Respaldo' && (!clasificacionSinRespaldo || !descripcion.trim()))}
+                      className={`mt-8 w-full py-4 rounded-xl font-bold flex items-center justify-center gap-3 text-lg ${isSaving || (transactionType === 'Nota de Crédito' && !facturaAsociada.trim()) || (transactionType === 'Sin Respaldo' && (!clasificacionSinRespaldo || !descripcion.trim())) ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-sm tracking-wide transition-colors'}`}
                     >
                       {isSaving ? (
                         <><RefreshCcw className="h-6 w-6 animate-spin" /> Guardando...</>
@@ -886,6 +969,7 @@ function App() {
                         <option value="" disabled>Selecciona el origen del pago...</option>
                         <option value="Caja Principal">Fondos por Rendir (Cargo a Caja Principal)</option>
                         <option value="Casa Comercial">Nota de Crédito (Cargo a Casa Comercial)</option>
+                        <option value="Fondos Mixtos">Fondos Mixtos (Caja + Comercial)</option>
                       </select>
                     </div>
                   )}                  <label className={`upload-area w-full h-48 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all ${file ? 'border-[#38bdf8] bg-sky-50' : 'border-slate-300 hover:bg-slate-50'} ${isProcessing ? 'pulse-animation' : ''}`}>
@@ -1247,10 +1331,10 @@ function App() {
                         onClick={handleExport}
                         disabled={isExporting}
                         className="h-[42px] px-4 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-lg outline-none hover:bg-emerald-100 transition-colors flex items-center justify-center gap-2 font-bold text-sm shadow-sm whitespace-nowrap"
-                        title="Exportar datos actuales a Google Sheets"
+                        title="Sincronizar datos actuales a Kame ERP / Google Sheets"
                       >
-                        {isExporting ? <RefreshCcw className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                        <span className="hidden sm:inline">Exportar a Sheets</span>
+                        {isExporting ? <RefreshCcw className="h-4 w-4 animate-spin" /> : <HardDriveDownload className="h-4 w-4" />}
+                        <span className="hidden sm:inline">Sincronizar Manualmente</span>
                       </button>
                       <a 
                         href="https://docs.google.com/spreadsheets/d/13uq1ouzbLlc1efCPaaFpqIxVM_x4e8a93KyVdbEPwUo/edit"
@@ -1288,6 +1372,7 @@ function App() {
                         <tr>
                           <th className="p-5 text-xs">Transacción / Fecha</th>
                           {activeTab === 'admin' && <th className="p-5 text-xs">Usuario / Depto</th>}
+                          <th className="p-5 text-xs">N° Doc.</th>
                           <th className="p-5 text-xs">Proveedor / Proyecto</th>
                           <th className="p-5 text-xs text-center">Estado</th>
                           <th className="p-5 text-xs text-right">Monto</th>
@@ -1312,6 +1397,11 @@ function App() {
                                 <p className="text-[10px] text-slate-400 uppercase tracking-wider mt-0.5">{exp.departamento}</p>
                               </td>
                             )}
+                            <td className="p-5">
+                              <p className="text-xs font-mono text-slate-600 bg-slate-100 px-2 py-1 rounded inline-block">
+                                {exp.factura_asociada || '-'}
+                              </p>
+                            </td>
                             <td className="p-5">
                               <p className="text-sm font-semibold text-slate-700">{exp.rut_proveedor}</p>
                               <p className="text-xs text-slate-400 mt-0.5 ">{exp.centro_costo}</p>
@@ -1402,16 +1492,37 @@ function App() {
                       </div>
                       <div>
                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Estado</label>
-                        <select value={editForm.estado} onChange={e => setEditForm({...editForm, estado: e.target.value})} className="w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all p-3 rounded-xl font-bold">
+                        <select 
+                          value={editForm.estado} 
+                          onChange={e => setEditForm({...editForm, estado: e.target.value})} 
+                          disabled={activeTab !== 'admin'}
+                          className={`w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all p-3 rounded-xl font-bold ${activeTab !== 'admin' ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : ''}`}
+                        >
                           <option value="Pendiente de Revisión">Pendiente de Revisión</option>
                           <option value="Aprobada">Aprobada</option>
+                          <option value="Aprobado">Aprobado</option>
                           <option value="Rechazada">Rechazada</option>
+                          <option value="Rechazado">Rechazado</option>
                         </select>
                       </div>
-                      <div className="pt-6">
-                        <button onClick={handleEditSubmit} className="bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition-colors shadow-sm font-bold tracking-wide w-full py-3.5 rounded-xl text-lg flex justify-center items-center gap-2">
+                      <div className="pt-6 flex gap-3">
+                        <button onClick={handleEditSubmit} className="bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition-colors shadow-sm font-bold tracking-wide flex-1 py-3.5 rounded-xl text-lg flex justify-center items-center gap-2">
                           Guardar Cambios
                         </button>
+                        {activeTab === 'admin' && (
+                          <button 
+                            onClick={() => {
+                              if (window.confirm("¿Estás seguro de anular/rechazar este gasto?")) {
+                                setEditForm({...editForm, estado: 'Rechazado'});
+                                // Opcional: handleEditSubmit directly or wait for them to save
+                              }
+                            }} 
+                            className="bg-rose-100 hover:bg-rose-200 text-rose-600 rounded-lg transition-colors font-bold tracking-wide px-4 py-3.5 rounded-xl flex justify-center items-center gap-2"
+                            title="Anular Gasto"
+                          >
+                            <X className="h-5 w-5" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
