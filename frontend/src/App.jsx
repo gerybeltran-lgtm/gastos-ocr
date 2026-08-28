@@ -10,6 +10,7 @@ import { jwtDecode } from 'jwt-decode';
 import axios from 'axios';
 
 const ADMIN_EMAILS = ["gerardo.beltran@e-voltage.cl", "jose.diaz@e-voltage.cl", "jorge.salas@e-voltage.cl"];
+const APPROVER_EMAILS = ["gerardo.beltran@e-voltage.cl", "jose.diaz@e-voltage.cl"];
 
 const HoverDropdown = ({ label, value, options, onChange, className = "" }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -245,6 +246,7 @@ function App() {
   const showSuccess = (title, message) => setDialog({ isOpen: true, type: 'success', title, message, onConfirm: null });
 
   const isAdmin = user && ADMIN_EMAILS.includes(user.email.toLowerCase());
+  const isApprover = user && APPROVER_EMAILS.includes(user.email.toLowerCase());
 
   const login = useGoogleLogin({
     onSuccess: async (tokenResponse) => {
@@ -1770,7 +1772,7 @@ function App() {
                               </td>
                               <td className="p-4 text-right">
                                 <div className="flex items-center justify-end gap-1.5">
-                                  {isAdmin && (exp.estado === 'Pendiente' || exp.estado === 'Pendiente de Revisión') && (
+                                  {isApprover && (exp.estado === 'Pendiente' || exp.estado === 'Pendiente de Revisión') && (
                                     <>
                                       <button onClick={() => handleUpdateStatus(exp.id, 'Aprobado')} className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all" title="Aprobar Rendición">
                                         <CheckCircle className="h-4 w-4" />
@@ -1780,7 +1782,7 @@ function App() {
                                       </button>
                                     </>
                                   )}
-                                  {isAdmin && exp.estado !== 'Anulado' && exp.estado !== 'Anulada' && (
+                                  {isApprover && exp.estado !== 'Anulado' && exp.estado !== 'Anulada' && (
                                     <button 
                                       onClick={() => handleUpdateStatus(exp.id, 'Anulado')} 
                                       className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all" 
@@ -1796,7 +1798,7 @@ function App() {
                                   >
                                     <Edit2 className="h-4 w-4" />
                                   </button>
-                                  {isAdmin && (
+                                  {isApprover && (
                                     <button 
                                       onClick={() => handleDelete(exp.id)}
                                       className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
@@ -1891,13 +1893,13 @@ function App() {
                       <div>
                         <div className="flex items-center justify-between mb-2">
                           <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Estado</label>
-                          {!isAdmin && <span className="text-[10px] text-amber-600 font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">Solo Lectura (Admin/Finanzas)</span>}
+                          {!isApprover && <span className="text-[10px] text-amber-600 font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">Solo Lectura (Gerencia/Finanzas)</span>}
                         </div>
                         <select 
                           value={editForm.estado} 
                           onChange={e => setEditForm({...editForm, estado: e.target.value})} 
-                          disabled={!isAdmin}
-                          className={`w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all p-3 rounded-xl font-bold ${!isAdmin ? 'bg-slate-100 text-slate-400 cursor-not-allowed border-slate-200' : 'text-slate-800'}`}
+                          disabled={!isApprover}
+                          className={`w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all p-3 rounded-xl font-bold ${!isApprover ? 'bg-slate-100 text-slate-400 cursor-not-allowed border-slate-200' : 'text-slate-800'}`}
                         >
                           <option value="Pendiente de Revisión">Pendiente de Revisión</option>
                           <option value="Aprobado">Aprobado</option>
@@ -1909,7 +1911,7 @@ function App() {
                         <button onClick={handleEditSubmit} className="bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition-colors shadow-sm font-bold tracking-wide flex-1 py-3.5 rounded-xl text-lg flex justify-center items-center gap-2">
                           Guardar Cambios
                         </button>
-                        {isAdmin && (
+                        {isApprover && (
                           <button 
                             onClick={() => {
                               if (window.confirm("¿Estás seguro de anular esta transacción?")) {
