@@ -69,6 +69,16 @@ def upload_image_to_drive(file_path, filename):
         supportsAllDrives=True
     ).execute()
     
+    # Otorgar permisos de lectura a cualquiera con el enlace para evitar pantalla "Solicitar Acceso"
+    try:
+        drive_service.permissions().create(
+            fileId=file.get('id'),
+            body={'type': 'anyone', 'role': 'reader'},
+            supportsAllDrives=True
+        ).execute()
+    except Exception as e:
+        print(f"Advertencia: No se pudo asignar permiso público de lectura a Drive: {e}")
+
     return file.get('webViewLink')
 
 def overwrite_sheets(rows):
