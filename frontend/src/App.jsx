@@ -1,8 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Camera, Upload, CheckCircle, FileText, RefreshCcw, DollarSign, Calendar, Hash, User, ShieldAlert, History, Filter, Edit2, Trash2, X, PieChart, Users, Building2, BarChart3, ArrowRight, LogOut, AlertTriangle, ArrowDownCircle, Wallet, AlertCircle, HelpCircle, ChevronDown, HardDriveDownload, Ban } from 'lucide-react';
+import { 
+  Camera, Upload, CheckCircle, FileText, RefreshCcw, DollarSign, Calendar, Hash, 
+  User, ShieldAlert, History, Filter, Edit2, Trash2, X, PieChart, Users, Building2, 
+  BarChart3, ArrowRight, LogOut, AlertTriangle, ArrowDownCircle, Wallet, AlertCircle, 
+  HelpCircle, ChevronDown, HardDriveDownload, Ban, CreditCard, Receipt, FileSpreadsheet 
+} from 'lucide-react';
 import { useGoogleLogin } from '@react-oauth/google';
 import { jwtDecode } from 'jwt-decode';
 import axios from 'axios';
+
 const ADMIN_EMAILS = ["gerardo.beltran@e-voltage.cl", "jose.diaz@e-voltage.cl", "jorge.salas@e-voltage.cl"];
 
 const HoverDropdown = ({ label, value, options, onChange, className = "" }) => {
@@ -64,6 +70,115 @@ const HoverDropdown = ({ label, value, options, onChange, className = "" }) => {
               {opt.label}
             </div>
           ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Donut Chart Component for Rendición por Estado
+const StatusDonutChart = ({ pending = 0, approved = 0, rejected = 0, voided = 0 }) => {
+  const total = pending + approved + rejected + voided;
+  if (total === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center p-6 text-slate-400 text-xs">
+        <span>Sin datos de estado</span>
+      </div>
+    );
+  }
+
+  const pPend = Math.round((pending / total) * 100);
+  const pAppr = Math.round((approved / total) * 100);
+  const pRej = Math.round((rejected / total) * 100);
+  const pVoid = Math.max(0, 100 - (pPend + pAppr + pRej));
+
+  // Circumference for r=38 is 2 * PI * 38 = ~238.76
+  const C = 238.76;
+  const strokePend = (pPend / 100) * C;
+  const strokeAppr = (pAppr / 100) * C;
+  const strokeRej = (pRej / 100) * C;
+  const strokeVoid = (pVoid / 100) * C;
+
+  const offsetAppr = strokePend;
+  const offsetRej = strokePend + strokeAppr;
+  const offsetVoid = strokePend + strokeAppr + strokeRej;
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 flex flex-col items-center justify-between">
+      <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3 w-full text-center">
+        Rendición por Estado
+      </h3>
+
+      <div className="relative w-36 h-36 flex items-center justify-center my-2">
+        <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+          {/* Background circle */}
+          <circle cx="50" cy="50" r="38" fill="transparent" stroke="#f1f5f9" strokeWidth="16" />
+          
+          {/* Pendiente (Yellow) */}
+          {strokePend > 0 && (
+            <circle
+              cx="50" cy="50" r="38" fill="transparent"
+              stroke="#fbbf24" strokeWidth="16"
+              strokeDasharray={`${strokePend} ${C - strokePend}`}
+              strokeDashoffset="0"
+            />
+          )}
+
+          {/* Aprobado (Green) */}
+          {strokeAppr > 0 && (
+            <circle
+              cx="50" cy="50" r="38" fill="transparent"
+              stroke="#10b981" strokeWidth="16"
+              strokeDasharray={`${strokeAppr} ${C - strokeAppr}`}
+              strokeDashoffset={`-${offsetAppr}`}
+            />
+          )}
+
+          {/* Rechazado (Red) */}
+          {strokeRej > 0 && (
+            <circle
+              cx="50" cy="50" r="38" fill="transparent"
+              stroke="#f43f5e" strokeWidth="16"
+              strokeDasharray={`${strokeRej} ${C - strokeRej}`}
+              strokeDashoffset={`-${offsetRej}`}
+            />
+          )}
+
+          {/* Anulado (Gray) */}
+          {strokeVoid > 0 && (
+            <circle
+              cx="50" cy="50" r="38" fill="transparent"
+              stroke="#94a3b8" strokeWidth="16"
+              strokeDasharray={`${strokeVoid} ${C - strokeVoid}`}
+              strokeDashoffset={`-${offsetVoid}`}
+            />
+          )}
+        </svg>
+
+        {/* Center label */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-lg font-black text-slate-800">{total}</span>
+          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Docs</span>
+        </div>
+      </div>
+
+      {/* Legend */}
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 mt-3 text-[11px] font-semibold text-slate-600 w-full px-1">
+        <div className="flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0"></span>
+          <span className="truncate">Pendiente {pPend}%</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0"></span>
+          <span className="truncate">Aprobado {pAppr}%</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0"></span>
+          <span className="truncate">Rechazado {pRej}%</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 rounded-full bg-slate-400 shrink-0"></span>
+          <span className="truncate">Anulado {pVoid}%</span>
         </div>
       </div>
     </div>
@@ -149,11 +264,6 @@ function App() {
     },
     prompt: 'select_account'
   });
-
-  const handleLoginSuccess = (credentialResponse) => {
-    const decoded = jwtDecode(credentialResponse.credential);
-    setUser({ name: decoded.name, email: decoded.email, picture: decoded.picture });
-  };
 
   const handleFileChange = (e) => {
     if (e.target.files && e.target.files[0]) {
@@ -302,7 +412,6 @@ function App() {
 
       let response;
       if (activeTab === 'admin') {
-        // El backend exige que el email coincida tanto en query param como en header X-User-Email
         response = await axios.get(
           `${API_URL}/admin/history?email=${encodeURIComponent(user.email)}`,
           { headers: { 'X-User-Email': user.email } }
@@ -350,7 +459,7 @@ function App() {
     let comentarios = "";
     if (nuevoEstado === 'Rechazado' || nuevoEstado === 'Anulado') {
       const motivo = window.prompt(`Por favor, ingresa el motivo del ${nuevoEstado === 'Anulado' ? 'anulación' : 'rechazo'}:`);
-      if (motivo === null) return; // Cancelado por el usuario
+      if (motivo === null) return;
       comentarios = motivo;
     }
     
@@ -433,7 +542,6 @@ function App() {
       setDialog({ isOpen: false });
       setIsExporting(true);
       try {
-        // Encabezados de la tabla
         const headers = [
           "ID Gasto", 
           "Estado", 
@@ -456,7 +564,6 @@ function App() {
           "Comentarios Revisor"
         ];
 
-        // Formatear filas para exportar
         const dataRows = filteredExpenses.map(exp => [
           exp.id,
           exp.estado || "Pendiente de Revisión",
@@ -515,84 +622,163 @@ function App() {
     return s === 'rechazado' || s === 'rechazada' || s === 'anulado' || s === 'anulada';
   };
 
-  // KPIs Financieros Segregados (TAREA 1 & 3: Tres Bolsas Contables Independientes + Filtro WHERE estado NOT IN ('RECHAZADO', 'ANULADO'))
+  const isApprovedStatus = (estado) => {
+    const s = (estado || '').toLowerCase().trim();
+    return s === 'aprobado' || s === 'aprobada';
+  };
+
+  const isPendingStatus = (estado) => {
+    const s = (estado || '').toLowerCase().trim();
+    return s === 'pendiente de revisión' || s === 'pendiente' || s === 'pendiente_de_aprobacion' || s === 'pendiente de aprobación';
+  };
+
+  // KPIs Financieros Segregados DealFlow v2.4 (3 Cajas Contables + Ciclo de Aprobación de Finanzas)
   const finanzas = useMemo(() => {
-    let fondosDisponibles = activeTab === 'admin' ? 0 : capitalEntregado;
-    let enTramiteCaja = 0;
-    let saldosAFavor = 0;
-    let enTramiteNC = 0;
-    let totalGastado = 0;
+    // 1. Caja 1: Fondo Principal (Liquidez Bancaria)
+    let totalAsignadoCaja = activeTab === 'admin' ? 0 : capitalEntregado;
+    let gastosAprobadosCaja = 0;
+    let pendienteAprobacionCaja = 0;
+
+    // 2. Caja 2: Casa Comercial (Notas de Crédito)
+    let totalNotasCredito = 0;
+    let gastosAprobadosNC = 0;
+    let pendienteAprobacionNC = 0;
+
+    // 3. Caja 3: Por Recuperar por Liquidación (Gastos Sin Respaldo / Nómina)
+    let fondosSinRespaldoTotal = 0;
+    let fondosSinRespaldoPendiente = 0;
+    let fondosSinRespaldoAprobado = 0;
+
+    // Métricas Globales / Admin
+    let totalGastadoEmpresa = 0;
     let ivaAcumulado = 0;
-    let fondosSinRespaldo = 0;
-    
+
+    // Donut chart counts
+    let countPendiente = 0;
+    let countAprobado = 0;
+    let countRechazado = 0;
+    let countAnulado = 0;
+    let totalMontoFiltered = 0;
+
     filteredExpenses.forEach(exp => {
       const monto = parseFloat(exp.monto_total) || 0;
       const mCaja = parseFloat(exp.monto_caja) || 0;
       const mNC = parseFloat(exp.monto_nc) || 0;
       const iva = parseFloat(exp.iva) || 0;
       const estadoNorm = (exp.estado || '').toLowerCase().trim();
-      const isApproved = estadoNorm === 'aprobado' || estadoNorm === 'aprobada';
-      const isPending = estadoNorm === 'pendiente de revisión' || estadoNorm === 'pendiente';
-      
-      // Regla Backend & Frontend: Inyectar filtro WHERE estado NOT IN ('RECHAZADO', 'ANULADO')
+      const isAppr = isApprovedStatus(exp.estado);
+      const isPend = isPendingStatus(exp.estado);
+      const isRej = estadoNorm === 'rechazado' || estadoNorm === 'rechazada';
+      const isVoid = estadoNorm === 'anulado' || estadoNorm === 'anulada';
+
+      // Conteo para gráfico de estados
+      if (isAppr) countAprobado++;
+      else if (isPend) countPendiente++;
+      else if (isRej) countRechazado++;
+      else if (isVoid) countAnulado++;
+
+      totalMontoFiltered += monto;
+
+      // Si está Rechazado o Anulado, no afecta los saldos vivos de las cajas
       if (isRejectedOrVoid(exp.estado)) return;
 
-      // 1. Caja Principal (Efectivo/Liquidez)
+      // Inyecciones de Fondos / Saldos Iniciales (Caja 1)
       if (exp.tipo_transaccion === 'Saldo Inicial' || exp.tipo_transaccion === 'Ingreso de Dinero') {
-        if (isApproved) fondosDisponibles += monto;
-      } 
-      // 2. Casa Comercial (Billetera Virtual / Notas de Crédito) - *Nunca sumar a Caja Principal*
-      else if (exp.tipo_transaccion === 'Nota de Crédito') {
-        if (isApproved) {
-          saldosAFavor += monto;
-          ivaAcumulado += iva;
-        }
+        totalAsignadoCaja += monto;
       }
-      // 3. Gastos Operativos / Sin Respaldo
+      // Notas de Crédito (Caja 2)
+      else if (exp.tipo_transaccion === 'Nota de Crédito') {
+        totalNotasCredito += monto;
+        if (isAppr) ivaAcumulado += iva;
+      }
+      // Gastos Operativos / Boletas / Facturas / Sin Respaldo
       else {
-        if (isApproved) {
-          totalGastado += monto;
+        if (isAppr) {
+          totalGastadoEmpresa += monto;
           ivaAcumulado += iva;
         }
 
-        // Bolsa 3: Cuentas por Recuperar (Gastos Sin Respaldo / Nómina)
-        if (exp.tipo_transaccion === 'Gasto Sin Respaldo' || exp.tipo_transaccion === 'Sin Respaldo' || exp.origen_fondos === 'Cuentas por Recuperar') {
-            if (isApproved) fondosSinRespaldo += monto;
-        }
-
+        // Determinar cómo se financia este gasto (Caja vs NC)
         let deducirCaja = 0;
         let deducirNC = 0;
 
         if (exp.origen_fondos === 'Fondos Mixtos') {
-            deducirCaja = mCaja;
-            deducirNC = mNC;
+          deducirCaja = mCaja;
+          deducirNC = mNC;
         } else if (exp.origen_fondos === 'Casa Comercial') {
-            deducirNC = monto;
+          deducirNC = monto;
         } else {
-            // Default a Caja Principal
-            deducirCaja = monto;
+          deducirCaja = monto;
         }
 
-        if (isApproved) {
-            fondosDisponibles -= deducirCaja;
-            saldosAFavor -= deducirNC;
-        } else if (isPending) {
-            enTramiteCaja += deducirCaja;
-            enTramiteNC += deducirNC;
+        // Impacto en Caja 1 (Fondo Principal)
+        if (isAppr) {
+          gastosAprobadosCaja += deducirCaja;
+        } else if (isPend) {
+          pendienteAprobacionCaja += deducirCaja;
+        }
+
+        // Impacto en Caja 2 (Casa Comercial)
+        if (isAppr) {
+          gastosAprobadosNC += deducirNC;
+        } else if (isPend) {
+          pendienteAprobacionNC += deducirNC;
+        }
+
+        // Caja 3: Por Recuperar por Liquidación (Gastos Sin Respaldo)
+        if (exp.tipo_transaccion === 'Gasto Sin Respaldo' || exp.tipo_transaccion === 'Sin Respaldo' || exp.origen_fondos === 'Cuentas por Recuperar') {
+          fondosSinRespaldoTotal += monto;
+          if (isPend) fondosSinRespaldoPendiente += monto;
+          if (isAppr) fondosSinRespaldoAprobado += monto;
         }
       }
     });
-    
-    return { fondosDisponibles, enTramiteCaja, saldosAFavor, enTramiteNC, totalGastado, ivaAcumulado, fondosSinRespaldo };
+
+    // Fórmulas v2.4:
+    // CAJA 1:
+    const totalARendir = totalAsignadoCaja - gastosAprobadosCaja;
+    const saldoPorRendir = totalARendir - pendienteAprobacionCaja;
+
+    // CAJA 2:
+    const totalCasaComercial = totalNotasCredito - gastosAprobadosNC;
+    const saldoEnCasaComercial = totalCasaComercial - pendienteAprobacionNC;
+
+    // CAJA 3:
+    const porRecuperarLiquidacion = fondosSinRespaldoTotal;
+
+    const totalRegistros = countPendiente + countAprobado + countRechazado + countAnulado;
+    const pctPendiente = totalRegistros > 0 ? Math.round((countPendiente / totalRegistros) * 100) : 0;
+    const pctAprobado = totalRegistros > 0 ? Math.round((countAprobado / totalRegistros) * 100) : 0;
+    const pctRechazado = totalRegistros > 0 ? Math.round((countRechazado / totalRegistros) * 100) : 0;
+    const pctAnulado = totalRegistros > 0 ? Math.max(0, 100 - (pctPendiente + pctAprobado + pctRechazado)) : 0;
+
+    return {
+      totalARendir,
+      pendienteAprobacionCaja,
+      saldoPorRendir,
+      totalCasaComercial,
+      saldoEnCasaComercial,
+      pendienteAprobacionNC,
+      porRecuperarLiquidacion,
+      fondosSinRespaldoPendiente,
+      fondosSinRespaldoAprobado,
+      totalGastadoEmpresa,
+      ivaAcumulado,
+      totalMontoFiltered,
+      countPendiente,
+      countAprobado,
+      countRechazado,
+      countAnulado,
+      totalRegistros,
+      pctPendiente,
+      pctAprobado,
+      pctRechazado,
+      pctAnulado
+    };
   }, [filteredExpenses, capitalEntregado, activeTab]);
 
-  const totalSpent = finanzas.totalGastado;
-  const fondosDisponibles = finanzas.fondosDisponibles;
-  const enTramiteCaja = finanzas.enTramiteCaja;
-  const saldosAFavor = finanzas.saldosAFavor;
-  const enTramiteNC = finanzas.enTramiteNC;
+  const totalSpent = finanzas.totalGastadoEmpresa;
   const ivaAcumulado = finanzas.ivaAcumulado;
-  const fondosSinRespaldo = finanzas.fondosSinRespaldo;
   const totalInvoices = filteredExpenses.length;
 
   const isValidExpense = (exp) => {
@@ -639,15 +825,14 @@ function App() {
         <header className="bg-white border-b border-slate-100 sticky top-0 z-20">
           <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
             
-            {/* Left: App Branding (DealFlow Style) */}
+            {/* Left: App Branding */}
             <button onClick={goHome} className="flex items-center gap-3 hover:opacity-80 transition-opacity text-left outline-none" title="Volver al Inicio">
-              {/* Yellow DealFlow Icon */}
               <img src="/icon-192.png" alt="DealFlow Gastos" className="shrink-0 h-10 w-10 rounded-[10px] shadow-sm" />
               
               <div className="flex flex-col">
                 <div className="flex items-center gap-2">
                   <h1 className="text-[17px] font-bold text-[#1e293b] tracking-tight leading-none">DealFlow Gastos</h1>
-                  <span className="bg-[#f1f5f9] text-[#64748b] text-[10px] font-bold px-1.5 py-0.5 rounded leading-none">v2.1</span>
+                  <span className="bg-[#f1f5f9] text-[#64748b] text-[10px] font-bold px-1.5 py-0.5 rounded leading-none">v2.4</span>
                 </div>
                 <p className="text-[10px] uppercase tracking-widest text-[#94a3b8] font-bold mt-1 leading-none">Plataforma de Rendiciones</p>
               </div>
@@ -655,8 +840,6 @@ function App() {
 
             {/* Right: Company Logo Pill & User Profile */}
             <div className="flex items-center gap-5 shrink-0">
-              
-              {/* Powered by Pill */}
               <div className="hidden sm:flex items-center gap-3 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
                 <img src="/logo.png" alt="E-Voltage" className="object-contain shrink-0 h-6" />
                 <span className="text-[11px] text-slate-400 font-medium border-l border-slate-200 pl-3">Powered by DealFlow</span>
@@ -727,7 +910,7 @@ function App() {
           )}
         </header>
 
-        <main className="max-w-6xl mx-auto px-4 py-8">
+        <main className="max-w-7xl mx-auto px-4 py-8">
           {!user ? (
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-10 flex flex-col items-center text-center max-w-md mx-auto mt-16 bg-white">
               <img src="/icon-192.png" alt="DealFlow Gastos" className="h-20 w-20 rounded-2xl shadow-md mb-6" />
@@ -758,7 +941,6 @@ function App() {
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  {/* Columna Izquierda: Rendición */}
                   <div>
                     <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2 mb-4">Rendición de Gastos</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -779,7 +961,6 @@ function App() {
                     </div>
                   </div>
                   
-                  {/* Columna Derecha: Fondos */}
                   <div>
                     <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2 mb-4">Gestión de Fondos</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -811,7 +992,6 @@ function App() {
                     </div>
                     
                     <div className="space-y-5">
-                      {/* Mostrar RUT y N° Documento */}
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <label className="block text-xs font-bold text-slate-500 mb-1 uppercase">RUT Proveedor</label>
@@ -882,7 +1062,6 @@ function App() {
                             />
                           </div>
 
-                          {/* Validación matemática en tiempo real */}
                           {(() => {
                             const valCaja = parseFloat(montoCaja) || 0;
                             const valNC = parseFloat(montoNC) || 0;
@@ -942,7 +1121,6 @@ function App() {
                         ></textarea>
                       </div>
 
-                      {/* Manual File Upload */}
                       {!reviewData.link_drive && (
                         <div className="pt-4 border-t border-slate-100">
                           <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Adjuntar Documento (Opcional)</label>
@@ -1065,7 +1243,9 @@ function App() {
                         <option value="Fondos Mixtos">Fondos Mixtos (Caja + Comercial)</option>
                       </select>
                     </div>
-                  )}                  <label className={`upload-area w-full h-48 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all ${file ? 'border-[#38bdf8] bg-sky-50' : 'border-slate-300 hover:bg-slate-50'} ${isProcessing ? 'pulse-animation' : ''}`}>
+                  )}
+
+                  <label className={`upload-area w-full h-48 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all ${file ? 'border-[#38bdf8] bg-sky-50' : 'border-slate-300 hover:bg-slate-50'} ${isProcessing ? 'pulse-animation' : ''}`}>
                     {file ? (
                       <>
                         <CheckCircle className="h-12 w-12 text-[#38bdf8] mb-3" />
@@ -1100,7 +1280,6 @@ function App() {
                           return;
                         }
                         setError(null);
-                        // Skip file upload completely
                         setReviewData({
                           id: crypto.randomUUID(),
                           usuario_nombre: user.name,
@@ -1306,38 +1485,92 @@ function App() {
                 </div>
                 </>
               ) : (
+                /* 3 CAJAS CONTABLES DEALFLOW v2.4 (MOCKUP JORGE SALAS) */
                 <>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {/* Total a Rendir */}
-                  <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex items-center gap-5">
-                    <div className="h-12 w-12 bg-sky-50 text-[#38bdf8] rounded-xl flex items-center justify-center">
-                      <Wallet className="h-6 w-6" />
+                  
+                  {/* CAJA 1: TOTAL A RENDIR (FONDO PRINCIPAL) */}
+                  <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 flex flex-col justify-between hover:shadow-md transition-shadow">
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className="h-11 w-11 bg-amber-50 border border-amber-200 text-amber-600 rounded-xl flex items-center justify-center shrink-0">
+                          <Wallet className="h-6 w-6" />
+                        </div>
+                        <div>
+                          <p className="text-[11px] font-black text-slate-700 uppercase tracking-wider">Total a Rendir <span className="text-slate-400 font-bold">(Fondo Principal)</span></p>
+                          <p className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-0.5">
+                            ${finanzas.totalARendir.toLocaleString('es-CL')}
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total a Rendir</p>
-                      <p className="text-2xl font-black text-slate-800">${(fondosDisponibles > 0 ? fondosDisponibles : 0).toLocaleString('es-CL')}</p>
+
+                    <div className="space-y-2 pt-3 border-t border-slate-100">
+                      <div className="flex items-center justify-between px-3 py-2 bg-amber-50/70 border border-amber-200/80 rounded-xl text-xs">
+                        <span className="font-bold text-amber-800 uppercase text-[10px] tracking-wider">Pendiente de Aprobación</span>
+                        <span className="font-black text-amber-900">${finanzas.pendienteAprobacionCaja.toLocaleString('es-CL')}</span>
+                      </div>
+                      <div className="flex items-center justify-between px-3 py-2 bg-emerald-50/70 border border-emerald-200/80 rounded-xl text-xs">
+                        <span className="font-bold text-emerald-800 uppercase text-[10px] tracking-wider">Saldo Por Rendir</span>
+                        <span className={`font-black ${finanzas.saldoPorRendir < 0 ? 'text-rose-700' : 'text-emerald-900'}`}>
+                          ${finanzas.saldoPorRendir.toLocaleString('es-CL')}
+                        </span>
+                      </div>
                     </div>
                   </div>
                   
-                  {/* Casa Comercial */}
-                  <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex items-center gap-5">
-                    <div className="h-12 w-12 bg-emerald-50 text-emerald-500 rounded-xl flex items-center justify-center">
-                      <DollarSign className="h-6 w-6" />
+                  {/* CAJA 2: CASA COMERCIAL (BILLETERA VIRTUAL DEVOLUCIONES) */}
+                  <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 flex flex-col justify-between hover:shadow-md transition-shadow">
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className="h-11 w-11 bg-sky-50 border border-sky-200 text-sky-600 rounded-xl flex items-center justify-center shrink-0">
+                          <CreditCard className="h-6 w-6" />
+                        </div>
+                        <div>
+                          <p className="text-[11px] font-black text-slate-700 uppercase tracking-wider">Casa Comercial <span className="text-slate-400 font-bold">(Billetera Virtual Devoluciones)</span></p>
+                          <p className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-0.5">
+                            ${finanzas.totalCasaComercial.toLocaleString('es-CL')}
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Casa Comercial</p>
-                      <p className="text-2xl font-black text-slate-800">${saldosAFavor.toLocaleString('es-CL')}</p>
+
+                    <div className="space-y-2 pt-3 border-t border-slate-100">
+                      <div className="flex items-center justify-between px-3 py-2 bg-emerald-50/70 border border-emerald-200/80 rounded-xl text-xs">
+                        <span className="font-bold text-emerald-800 uppercase text-[10px] tracking-wider">Saldo en Casa Comercial</span>
+                        <span className="font-black text-emerald-900">${finanzas.saldoEnCasaComercial.toLocaleString('es-CL')}</span>
+                      </div>
+                      <div className="flex items-center justify-between px-3 py-2 bg-amber-50/70 border border-amber-200/80 rounded-xl text-xs">
+                        <span className="font-bold text-amber-800 uppercase text-[10px] tracking-wider">Pendiente de Aprobación</span>
+                        <span className="font-black text-amber-900">${finanzas.pendienteAprobacionNC.toLocaleString('es-CL')}</span>
+                      </div>
                     </div>
                   </div>
                   
-                  {/* Por Recuperar por Liquidación */}
-                  <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex items-center gap-5">
-                    <div className="h-12 w-12 bg-amber-50 text-amber-500 rounded-xl flex items-center justify-center">
-                      <FileText className="h-6 w-6" />
+                  {/* CAJA 3: POR RECUPERAR POR LIQUIDACIÓN (GASTOS SIN RESPALDO) */}
+                  <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 flex flex-col justify-between hover:shadow-md transition-shadow">
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className="h-11 w-11 bg-rose-50 border border-rose-200 text-rose-600 rounded-xl flex items-center justify-center shrink-0">
+                          <Receipt className="h-6 w-6" />
+                        </div>
+                        <div>
+                          <p className="text-[11px] font-black text-slate-700 uppercase tracking-wider">Por Recuperar por Liquidación</p>
+                          <p className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-0.5">
+                            ${finanzas.porRecuperarLiquidacion.toLocaleString('es-CL')}
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1" title="Gastos sin respaldo que se pagan en liquidación">Por Recuperar por Liquidación</p>
-                      <p className="text-2xl font-black text-slate-800">${fondosSinRespaldo.toLocaleString('es-CL')}</p>
+
+                    <div className="space-y-2 pt-3 border-t border-slate-100">
+                      <div className="flex items-center justify-between px-3 py-2 bg-rose-50/70 border border-rose-200/80 rounded-xl text-xs">
+                        <div className="flex flex-col">
+                          <span className="font-bold text-rose-800 uppercase text-[10px] tracking-wider">Fondos Rendidos Sin Respaldo</span>
+                          <span className="text-[9px] text-rose-600 font-medium">(Pendiente de depósito de nómina)</span>
+                        </div>
+                        <span className="font-black text-rose-900">${finanzas.fondosSinRespaldoPendiente.toLocaleString('es-CL')}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1349,7 +1582,7 @@ function App() {
                       <div className="h-8 w-8 bg-amber-50 rounded-lg flex items-center justify-center"><Hash className="h-4 w-4 text-amber-500" /></div>
                       <h3 className="font-bold text-slate-700 text-sm">Mi Gasto por Centro de Costo</h3>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                       {expensesByCostCenter.map(([cc, amount]) => (
                         <div key={cc} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
                           <span className="text-xs font-bold text-slate-600 truncate pr-2">{cc}</span>
@@ -1362,207 +1595,242 @@ function App() {
                 </>
               )}
 
-              {/* History Table */}
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm bg-white overflow-hidden">
-                <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex flex-col md:flex-row md:items-end justify-between gap-6">
-                  <div>
-                    <h2 className="text-xl font-bold text-slate-800 flex items-center gap-3">
-                      {activeTab === 'admin' ? <><ShieldAlert className="h-5 w-5 text-[#0ea5e9]"/> Auditoría Global</> : <><History className="h-5 w-5 text-slate-400"/> Historial de Rendiciones</>}
-                    </h2>
-                    <p className="text-sm text-slate-500 mt-1">Explora, filtra y edita los gastos registrados.</p>
-                  </div>
+              {/* History Table & Donut Section */}
+              <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
+                
+                {/* Table Container (3 Cols on Desktop) */}
+                <div className="lg:col-span-3 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                   
-                  <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
-                    {activeTab === 'admin' && (
-                      <HoverDropdown 
-                        label="Usuario"
-                        value={filterUser}
-                        onChange={setFilterUser}
-                        options={[{value: '', label: 'Todos'}, ...uniqueUsers.map(u => ({value: u, label: u.split(' ')[0]}))]}
-                      />
-                    )}
-                    <HoverDropdown 
-                      label="Departamento"
-                      value={filterDept}
-                      onChange={setFilterDept}
-                      options={[
-                        {value: '', label: 'Todos'}, 
-                        {value: 'Ventas', label: 'Ventas'},
-                        {value: 'Gerencia', label: 'Gerencia'},
-                        {value: 'Operaciones', label: 'Operaciones'},
-                        {value: 'Administración', label: 'Administración'}
-                      ]}
-                    />
-                    <HoverDropdown 
-                      label="Centro Costo"
-                      value={filterCostCenter}
-                      onChange={setFilterCostCenter}
-                      className=""
-                      options={[{value: '', label: 'Todos'}, ...uniqueCostCenters.map(cc => ({value: cc, label: cc}))]}
-                    />
-                    <HoverDropdown 
-                      label="Estado"
-                      value={filterEstado}
-                      onChange={setFilterEstado}
-                      options={[{value: '', label: 'Todos'}, ...uniqueEstados.map(e => ({value: e, label: e}))]}
-                    />
-                    <HoverDropdown 
-                      label="Tipo"
-                      value={filterTipo}
-                      onChange={setFilterTipo}
-                      options={[{value: '', label: 'Todos'}, ...uniqueTipos.map(t => ({value: t, label: t}))]}
-                    />
-                    <div className="flex items-end gap-2">
-                      <button 
-                        onClick={fetchHistory} 
-                        className="h-[42px] px-4 bg-white border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-slate-500/20 focus:border-slate-500 hover:bg-slate-50 transition-colors flex items-center justify-center"
-                        title="Actualizar"
-                      >
-                        <RefreshCcw className={`h-4 w-4 text-slate-500 ${loadingHistory ? 'animate-spin' : ''}`} />
-                      </button>
-                      <button 
-                        onClick={handleExport}
-                        disabled={isExporting}
-                        className="h-[42px] px-4 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-lg outline-none hover:bg-emerald-100 transition-colors flex items-center justify-center gap-2 font-bold text-sm shadow-sm whitespace-nowrap"
-                        title="Sincronizar datos actuales a Kame ERP / Google Sheets"
-                      >
-                        {isExporting ? <RefreshCcw className="h-4 w-4 animate-spin" /> : <HardDriveDownload className="h-4 w-4" />}
-                        <span className="hidden sm:inline">Sincronizar Manualmente</span>
-                      </button>
-                      <a 
-                        href="https://docs.google.com/spreadsheets/d/13uq1ouzbLlc1efCPaaFpqIxVM_x4e8a93KyVdbEPwUo/edit"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="h-[42px] px-4 bg-sky-50 text-sky-600 border border-sky-200 rounded-lg outline-none hover:bg-sky-100 transition-colors flex items-center justify-center gap-2 font-bold text-sm shadow-sm whitespace-nowrap"
-                        title="Abrir Google Sheets en una nueva pestaña"
-                      >
-                        <FileText className="h-4 w-4" />
-                        <span className="hidden sm:inline">Ver Planilla</span>
-                      </a>
+                  {/* Top Bar with Filters */}
+                  <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex flex-col md:flex-row md:items-end justify-between gap-6">
+                    <div>
+                      <h2 className="text-xl font-bold text-slate-800 flex items-center gap-3">
+                        {activeTab === 'admin' ? <><ShieldAlert className="h-5 w-5 text-[#0ea5e9]"/> Auditoría Global</> : <><History className="h-5 w-5 text-slate-400"/> Historial de Rendiciones</>}
+                      </h2>
+                      <p className="text-sm text-slate-500 mt-1">Explora, filtra y edita los gastos registrados.</p>
                     </div>
+                    
+                    <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
+                      {activeTab === 'admin' && (
+                        <HoverDropdown 
+                          label="Usuario"
+                          value={filterUser}
+                          onChange={setFilterUser}
+                          options={[{value: '', label: 'Todos'}, ...uniqueUsers.map(u => ({value: u, label: u.split(' ')[0]}))]}
+                        />
+                      )}
+                      <HoverDropdown 
+                        label="Departamento"
+                        value={filterDept}
+                        onChange={setFilterDept}
+                        options={[
+                          {value: '', label: 'Todos'}, 
+                          {value: 'Ventas', label: 'Ventas'},
+                          {value: 'Gerencia', label: 'Gerencia'},
+                          {value: 'Operaciones', label: 'Operaciones'},
+                          {value: 'Administración', label: 'Administración'}
+                        ]}
+                      />
+                      <HoverDropdown 
+                        label="Centro Costo"
+                        value={filterCostCenter}
+                        onChange={setFilterCostCenter}
+                        className=""
+                        options={[{value: '', label: 'Todos'}, ...uniqueCostCenters.map(cc => ({value: cc, label: cc}))]}
+                      />
+                      <HoverDropdown 
+                        label="Estado"
+                        value={filterEstado}
+                        onChange={setFilterEstado}
+                        options={[{value: '', label: 'Todos'}, ...uniqueEstados.map(e => ({value: e, label: e}))]}
+                      />
+                      <HoverDropdown 
+                        label="Tipo"
+                        value={filterTipo}
+                        onChange={setFilterTipo}
+                        options={[{value: '', label: 'Todos'}, ...uniqueTipos.map(t => ({value: t, label: t}))]}
+                      />
+                      <div className="flex items-end gap-2">
+                        <button 
+                          onClick={fetchHistory} 
+                          className="h-[42px] px-4 bg-white border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-slate-500/20 focus:border-slate-500 hover:bg-slate-50 transition-colors flex items-center justify-center"
+                          title="Actualizar"
+                        >
+                          <RefreshCcw className={`h-4 w-4 text-slate-500 ${loadingHistory ? 'animate-spin' : ''}`} />
+                        </button>
+                        <button 
+                          onClick={handleExport}
+                          disabled={isExporting}
+                          className="h-[42px] px-4 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg outline-none hover:bg-emerald-100 transition-colors flex items-center justify-center gap-2 font-bold text-sm shadow-sm whitespace-nowrap"
+                          title="Sincronizar datos actuales a Kame ERP / Google Sheets"
+                        >
+                          {isExporting ? <RefreshCcw className="h-4 w-4 animate-spin" /> : <HardDriveDownload className="h-4 w-4" />}
+                          <span className="hidden sm:inline">Sincronizar Cambios</span>
+                        </button>
+                        <a 
+                          href="https://docs.google.com/spreadsheets/d/13uq1ouzbLlc1efCPaaFpqIxVM_x4e8a93KyVdbEPwUo/edit"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="h-[42px] px-4 bg-sky-50 text-sky-600 border border-sky-200 rounded-lg outline-none hover:bg-sky-100 transition-colors flex items-center justify-center gap-2 font-bold text-sm shadow-sm whitespace-nowrap"
+                          title="Abrir Google Sheets en una nueva pestaña"
+                        >
+                          <FileText className="h-4 w-4" />
+                          <span className="hidden sm:inline">Ver Planilla</span>
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Table Content */}
+                  <div className="p-0 overflow-x-auto">
+                    {loadingHistory ? (
+                      <div className="p-20 text-center flex flex-col items-center">
+                        <div className="h-16 w-16 bg-slate-50 rounded-full flex items-center justify-center mb-4 border border-slate-100">
+                          <RefreshCcw className="h-8 w-8 animate-spin text-[#38bdf8]" />
+                        </div>
+                        <p className="font-semibold text-slate-600 tracking-wide">Sincronizando datos...</p>
+                      </div>
+                    ) : filteredExpenses.length === 0 ? (
+                      <div className="p-20 text-center flex flex-col items-center">
+                        <div className="h-20 w-20 bg-slate-50 rounded-full flex items-center justify-center mb-4 border border-slate-100">
+                          <FileText className="h-10 w-10 text-slate-300" />
+                        </div>
+                        <p className="font-semibold text-slate-600">No hay gastos para mostrar.</p>
+                        <p className="text-sm text-slate-400 mt-1">Intenta cambiar los filtros o sube una nueva boleta.</p>
+                      </div>
+                    ) : (
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="border-b border-slate-200 bg-slate-50/80 text-slate-600">
+                            <th className="p-4 text-xs font-bold uppercase tracking-wider">Transacción / Fecha</th>
+                            {activeTab === 'admin' && <th className="p-4 text-xs font-bold uppercase tracking-wider">Usuario / Depto</th>}
+                            <th className="p-4 text-xs font-bold uppercase tracking-wider">N° Documento</th>
+                            <th className="p-4 text-xs font-bold uppercase tracking-wider">Proveedor / Proyecto</th>
+                            <th className="p-4 text-xs font-bold uppercase tracking-wider text-center">Estado</th>
+                            <th className="p-4 text-xs font-bold uppercase tracking-wider text-right">Monto</th>
+                            <th className="p-4 text-xs font-bold uppercase tracking-wider text-center">Resp.</th>
+                            <th className="p-4 text-xs font-bold uppercase tracking-wider text-right">Acciones</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {filteredExpenses.map((exp) => (
+                            <tr key={exp.id} className="group hover:bg-slate-50/60 transition-colors">
+                              <td className="p-4">
+                                <div className="flex items-center gap-3">
+                                  <div className="h-9 w-9 rounded-lg bg-sky-50 border border-sky-100 text-sky-600 flex items-center justify-center shrink-0">
+                                    <FileText className="h-4.5 w-4.5" />
+                                  </div>
+                                  <div>
+                                    <p className="text-xs font-bold text-slate-800">
+                                      {exp.tipo_transaccion || 'Boleta'}
+                                      {exp.descripcion && <span className="text-slate-500 font-normal ml-1.5">— {exp.descripcion}</span>}
+                                    </p>
+                                    <p className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5 font-medium">
+                                      <Calendar className="h-3 w-3" /> {exp.fecha_boleta || exp.fecha_captura?.substring(0,10)}
+                                    </p>
+                                  </div>
+                                </div>
+                              </td>
+                              {activeTab === 'admin' && (
+                                <td className="p-4">
+                                  <p className="text-sm font-semibold text-slate-800">{exp.usuario_nombre}</p>
+                                  <p className="text-[10px] text-slate-400 uppercase tracking-wider mt-0.5">{exp.departamento}</p>
+                                </td>
+                              )}
+                              <td className="p-4">
+                                <span className="text-xs font-mono text-slate-600 bg-slate-100 px-2 py-1 rounded">
+                                  {exp.factura_asociada ? `N° Doc: ${exp.factura_asociada}` : '-'}
+                                </span>
+                              </td>
+                              <td className="p-4">
+                                <p className="text-sm font-semibold text-slate-700">{exp.rut_proveedor || '-'}</p>
+                                <p className="text-xs text-slate-400 mt-0.5">{exp.centro_costo}</p>
+                              </td>
+                              <td className="p-4 text-center">
+                                <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                                  (exp.estado === 'Aprobado' || exp.estado === 'Aprobada') ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
+                                  (exp.estado === 'Rechazado' || exp.estado === 'Rechazada') ? 'bg-rose-100 text-rose-800 border border-rose-200' :
+                                  (exp.estado === 'Anulado' || exp.estado === 'Anulada') ? 'bg-slate-100 text-slate-600 border border-slate-300' :
+                                  'bg-amber-100 text-amber-800 border border-amber-200'
+                                }`}>
+                                  {exp.estado || 'Pendiente de Revisión'}
+                                </span>
+                              </td>
+                              <td className="p-4 text-sm font-black text-slate-900 text-right">
+                                ${parseInt(exp.monto_total || 0).toLocaleString('es-CL')}
+                              </td>
+                              <td className="p-4 text-center">
+                                {exp.link_drive ? (
+                                  <a href={exp.link_drive} target="_blank" rel="noreferrer" className="inline-flex p-2 bg-slate-50 text-sky-600 hover:bg-sky-50 rounded-lg transition-all border border-slate-200" title="Ver Respaldo en Drive">
+                                    <FileText className="h-4 w-4" />
+                                  </a>
+                                ) : (
+                                  <span className="text-xs text-slate-300">-</span>
+                                )}
+                              </td>
+                              <td className="p-4 text-right">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  {isAdmin && (exp.estado === 'Pendiente' || exp.estado === 'Pendiente de Revisión') && (
+                                    <>
+                                      <button onClick={() => handleUpdateStatus(exp.id, 'Aprobado')} className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all" title="Aprobar Rendición">
+                                        <CheckCircle className="h-4 w-4" />
+                                      </button>
+                                      <button onClick={() => handleUpdateStatus(exp.id, 'Rechazado')} className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-all" title="Rechazar Rendición">
+                                        <X className="h-4 w-4" />
+                                      </button>
+                                    </>
+                                  )}
+                                  {isAdmin && exp.estado !== 'Anulado' && exp.estado !== 'Anulada' && (
+                                    <button 
+                                      onClick={() => handleUpdateStatus(exp.id, 'Anulado')} 
+                                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all" 
+                                      title="Anular Transacción"
+                                    >
+                                      <Ban className="h-5 w-5" />
+                                    </button>
+                                  )}
+                                  <button 
+                                    onClick={() => startEdit(exp)}
+                                    className="p-1.5 text-slate-400 hover:text-[#38bdf8] hover:bg-sky-50 rounded-lg transition-all"
+                                    title="Editar Gasto"
+                                  >
+                                    <Edit2 className="h-4 w-4" />
+                                  </button>
+                                  {isAdmin && (
+                                    <button 
+                                      onClick={() => handleDelete(exp.id)}
+                                      className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
+                                      title="Eliminar Gasto"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+
+                  {/* Table Footer with Monto Total */}
+                  <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-3 text-sm">
+                    <span className="font-bold text-slate-500 uppercase tracking-wider text-xs">Monto Total</span>
+                    <span className="font-black text-slate-900 text-base sm:text-lg">
+                      ${finanzas.totalMontoFiltered.toLocaleString('es-CL')}
+                    </span>
                   </div>
                 </div>
 
-                <div className="p-0 overflow-x-auto">
-                  {loadingHistory ? (
-                    <div className="p-20 text-center flex flex-col items-center">
-                      <div className="h-16 w-16 bg-slate-50 rounded-full flex items-center justify-center mb-4 border border-slate-100">
-                        <RefreshCcw className="h-8 w-8 animate-spin text-[#38bdf8]" />
-                      </div>
-                      <p className="font-semibold text-slate-600 tracking-wide">Sincronizando datos...</p>
-                    </div>
-                  ) : filteredExpenses.length === 0 ? (
-                    <div className="p-20 text-center flex flex-col items-center">
-                      <div className="h-20 w-20 bg-slate-50 rounded-full flex items-center justify-center mb-4 border border-slate-100">
-                        <FileText className="h-10 w-10 text-slate-300" />
-                      </div>
-                      <p className="font-semibold text-slate-600">No hay gastos para mostrar.</p>
-                      <p className="text-sm text-slate-400 mt-1">Intenta cambiar los filtros o sube una nueva boleta.</p>
-                    </div>
-                  ) : (
-                    <table className="w-full text-left border-collapse w-full text-left border-collapse">
-                      <thead>
-                        <tr>
-                          <th className="p-5 text-xs">Transacción / Fecha</th>
-                          {activeTab === 'admin' && <th className="p-5 text-xs">Usuario / Depto</th>}
-                          <th className="p-5 text-xs">N° Doc.</th>
-                          <th className="p-5 text-xs">Proveedor / Proyecto</th>
-                          <th className="p-5 text-xs text-center">Estado</th>
-                          <th className="p-5 text-xs text-right">Monto</th>
-                          <th className="p-5 text-xs text-center">Resp.</th>
-                          <th className="p-5 text-xs text-right">Acciones</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredExpenses.map((exp) => (
-                          <tr key={exp.id} className="group">
-                            <td className="p-5">
-                              <span className="bg-sky-50 text-[#0284c7] py-1.5 px-3 rounded-lg text-xs font-bold border border-sky-100 inline-block mb-1.5">
-                                {exp.tipo_transaccion || 'Boleta'}
-                              </span>
-                              <div className="text-[11px] text-slate-500 font-medium flex items-center gap-1.5">
-                                <Calendar className="h-3 w-3" /> {exp.fecha_captura?.substring(0,10)}
-                              </div>
-                            </td>
-                            {activeTab === 'admin' && (
-                              <td className="p-5">
-                                <p className="text-sm font-semibold text-slate-800">{exp.usuario_nombre}</p>
-                                <p className="text-[10px] text-slate-400 uppercase tracking-wider mt-0.5">{exp.departamento}</p>
-                              </td>
-                            )}
-                            <td className="p-5">
-                              <p className="text-xs font-mono text-slate-600 bg-slate-100 px-2 py-1 rounded inline-block">
-                                {exp.factura_asociada || '-'}
-                              </p>
-                            </td>
-                            <td className="p-5">
-                              <p className="text-sm font-semibold text-slate-700">{exp.rut_proveedor}</p>
-                              <p className="text-xs text-slate-400 mt-0.5 ">{exp.centro_costo}</p>
-                            </td>
-                            <td className="p-5 text-center">
-                              <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                                (exp.estado === 'Aprobado' || exp.estado === 'Aprobada') ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' :
-                                (exp.estado === 'Rechazado' || exp.estado === 'Rechazada') ? 'bg-rose-100 text-rose-700 border border-rose-200' :
-                                (exp.estado === 'Anulado' || exp.estado === 'Anulada') ? 'bg-slate-100 text-slate-600 border border-slate-300' :
-                                'bg-amber-100 text-amber-700 border border-amber-200'
-                              }`}>
-                                {exp.estado || 'Pendiente'}
-                              </span>
-                            </td>
-                            <td className="p-5 text-sm font-bold text-slate-800 text-right">${parseInt(exp.monto_total || 0).toLocaleString('es-CL')}</td>
-                            <td className="p-5 text-center">
-                              {exp.link_drive ? (
-                                <a href={exp.link_drive} target="_blank" rel="noreferrer" className="inline-flex p-2 bg-slate-50 text-[#38bdf8] hover:bg-sky-50 rounded-lg transition-all border border-slate-200" title="Ver Respaldo">
-                                  <FileText className="h-4 w-4" />
-                                </a>
-                              ) : (
-                                <span className="text-xs text-slate-300">-</span>
-                              )}
-                            </td>
-                            <td className="p-5 text-right">
-                              <div className="flex items-center justify-end gap-1.5">
-                                {isAdmin && (exp.estado === 'Pendiente' || exp.estado === 'Pendiente de Revisión') && (
-                                  <>
-                                    <button onClick={() => handleUpdateStatus(exp.id, 'Aprobado')} className="p-1.5 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-all" title="Aprobar Rendición">
-                                      <CheckCircle className="h-4 w-4" />
-                                    </button>
-                                    <button onClick={() => handleUpdateStatus(exp.id, 'Rechazado')} className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-all" title="Rechazar Rendición">
-                                      <X className="h-4 w-4" />
-                                    </button>
-                                  </>
-                                )}
-                                {isAdmin && exp.estado !== 'Anulado' && exp.estado !== 'Anulada' && (
-                                  <button 
-                                    onClick={() => handleUpdateStatus(exp.id, 'Anulado')} 
-                                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all" 
-                                    title="Anular Transacción"
-                                  >
-                                    <Ban className="h-4 w-4" />
-                                  </button>
-                                )}
-                                <button 
-                                  onClick={() => startEdit(exp)}
-                                  className="p-1.5 text-slate-400 hover:text-[#38bdf8] hover:bg-sky-50 rounded-lg transition-all"
-                                  title="Editar Gasto"
-                                >
-                                  <Edit2 className="h-4 w-4" />
-                                </button>
-                                {isAdmin && (
-                                  <button 
-                                    onClick={() => handleDelete(exp.id)}
-                                    className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
-                                    title="Eliminar Gasto"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </button>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
+                {/* Right Column: Donut Chart Widget */}
+                <div className="lg:col-span-1 space-y-6">
+                  <StatusDonutChart 
+                    pending={finanzas.countPendiente} 
+                    approved={finanzas.countAprobado} 
+                    rejected={finanzas.countRechazado} 
+                    voided={finanzas.countAnulado} 
+                  />
                 </div>
               </div>
 
@@ -1594,7 +1862,6 @@ function App() {
                         <input type="number" value={editForm.monto_total} onChange={e => setEditForm({...editForm, monto_total: parseFloat(e.target.value) || 0})} className="w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all p-3 rounded-xl font-bold text-lg text-[#0284c7]" />
                       </div>
 
-                      {/* Desglose Pago Mixto en Edición */}
                       {editForm.origen_fondos === 'Fondos Mixtos' && (
                         <div className="p-3 bg-amber-50/60 rounded-xl border border-amber-200 space-y-3">
                           <span className="text-xs font-bold text-slate-700 uppercase">Desglose Pago Mixto</span>
