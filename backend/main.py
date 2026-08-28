@@ -4,17 +4,15 @@ try:
     from dotenv import load_dotenv
     load_dotenv()
 except ImportError:
-    pass  # python-dotenv no instalado, se usarán variables del sistema
+    pass
 
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException, BackgroundTasks, Request
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from datetime import datetime
-import shutil
-import uuid
 from pydantic import BaseModel
-from supabase import create_client, Client
-import fitz  # PyMuPDF
-
+from typing import Optional, List
+from datetime import datetime
+import json
+import base64
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -26,6 +24,7 @@ ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".pdf"}
 ALLOWED_MIME_TYPES = {"image/jpeg", "image/png", "application/pdf"}
 
 ADMIN_EMAILS = ["gerardo.beltran@e-voltage.cl", "jose.diaz@e-voltage.cl", "jorge.salas@e-voltage.cl"]
+APPROVER_EMAILS = ["gerardo.beltran@e-voltage.cl", "jose.diaz@e-voltage.cl"]
 
 def send_notification_email(data: dict):
     sender_email = os.environ.get("SENDER_EMAIL", "notificacionesevoltage@gmail.com")
@@ -43,16 +42,25 @@ def send_notification_email(data: dict):
             </div>
             <div style="padding: 30px; background-color: #f8fafc;">
                 <p><strong>Usuario:</strong> {data.get('usuario_nombre')}</p>
-                <p><strong>Tipo:</strong> {data.get('tipo_transaccion')} (Estado: Pendiente)</p>
-                <p><strong>Monto:</strong> ${float(data.get('monto_total', 0)):,.0f}</p>
-                <p><strong>Centro de Costo:</strong> {data.get('centro_costo', '-')}</p>
-                <p><strong>Proveedor:</strong> {data.get('rut_proveedor', '-')}</p>
-                <p><strong>Fecha:</strong> {data.get('fecha_boleta', '-')}</p>
-                <p><strong>Motivo / Descripción:</strong> {data.get('descripcion', '-')}</p>
-                <br>
-                <a href="{data.get('link_drive', '#')}" style="display: inline-block; padding: 12px 24px; background-color: #10b981; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">Ver Documento Respaldo</a>
-                <br><br>
-                <p style="font-size: 12px; color: #64748b;">Para aprobar o rechazar esta solicitud, ingrese al Panel de Administrador en la plataforma DealFlow Gastos.</p>
+                <p><strong>Email:</strong> {data.get('usuario_email')}</p>
+                <p><strong>Departamento:</strong> {data.get('departamento')}</p>
+                <p><strong>Centro de Costo:</strong> {data.get('centro_costo')}</p>
+                <p><strong>Tipo de Transacción:</strong> {data.get('tipo_transaccion')}</p>
+                <p><strong>Origen de Fondos:</strong> {data.get('origen_fondos', 'Caja Principal')}</p>
+                <p><strong>RUT Proveedor:</strong> {data.get('rut_proveedor', 'N/A')}</p>
+                <p><strong>N° Doc / Factura Asociada:</strong> {data.get('factura_asociada', 'N/A')}</p>
+                <p><strong>Fecha Documento:</strong> {data.get('fecha_boleta', 'N/A')}</p>
+                <p><strong>Monto Total:</strong> ${data.get('monto_total', 0):,.0f}</p>
+                {f"<p><strong>Monto Caja Principal:</strong> ${data.get('monto_caja', 0):,.0f}</p>" if data.get('origen_fondos') == 'Fondos Mixtos' else ""}
+                {f"<p><strong>Monto Casa Comercial (NC):</strong> ${data.get('monto_nc', 0):,.0f}</p>" if data.get('origen_fondos') == 'Fondos Mixtos' else ""}
+                {f"<p><strong>Clasificación Sin Respaldo:</strong> {data.get('clasificacion_sin_respaldo')}</p>" if data.get('clasificacion_sin_respaldo') else ""}
+                <p><strong>IVA:</strong> ${data.get('iva', 0):,.0f}</p>
+                <p><strong>Estado:</strong> {data.get('estado', 'Pendiente de Revisión')}</p>
+                {f"<p><strong>Descripción / Motivo:</strong> {data.get('descripcion')}</p>" if data.get('descripcion') else ""}
+                {f"<p><strong>Respaldo Drive:</strong> <a href='{data.get('link_drive')}'>Ver archivo</a></p>" if data.get('link_drive') else ""}
+            </div>
+            <div style="background-color: #f1f5f9; padding: 15px; text-align: center; font-size: 12px; color: #64748b;">
+                DealFlow Gastos &bull; Sistema de Rendiciones
             </div>
         </div>
       </body>
@@ -61,82 +69,81 @@ def send_notification_email(data: dict):
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    msg["From"] = f"E-Voltage Notificaciones <{sender_email}>"
+    msg["From"] = f"DealFlow Gastos <{sender_email}>"
     msg["To"] = ", ".join(receiver_emails)
-    
-    part = MIMEText(html_content, "html")
-    msg.attach(part)
-    
+    msg.attach(MIMEText(html_content, "html"))
+
     try:
-        server = smtplib.SMTP_SSL("smtp.gmail.com", 465)
-        server.login(sender_email, app_password)
-        server.sendmail(sender_email, receiver_emails, msg.as_string())
-        server.quit()
-        print("Correo enviado exitosamente a los administradores.")
+        if not app_password:
+            print("AVISO: EMAIL_PASSWORD no configurada en variables de entorno. Correo omitido.")
+            return
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(sender_email, app_password)
+            server.sendmail(sender_email, receiver_emails, msg.as_string())
+        print("Correo enviado exitosamente a los administradores")
     except Exception as e:
-        print(f"Error enviando correo: {str(e)}")
+        print(f"Error al enviar correo de notificación: {e}")
 
-# Fin importaciones correo
+try:
+    from google_services import upload_to_drive, append_to_sheets, overwrite_sheets
+except ImportError:
+    def upload_to_drive(file_content, filename):
+        print("Aviso: google_services no encontrado. Simulando upload.")
+        return "https://drive.google.com/dummy-link"
+    def append_to_sheets(data):
+        print("Aviso: google_services no encontrado. Simulando append.")
+        return True
+    def overwrite_sheets(rows):
+        print("Aviso: google_services no encontrado. Simulando overwrite.")
+        return True
 
+try:
+    from supabase_client import supabase
+except ImportError:
+    class DummySupabase:
+        def table(self, name):
+            return self
+        def select(self, *args):
+            return self
+        def insert(self, data):
+            return self
+        def update(self, data):
+            return self
+        def delete(self):
+            return self
+        def eq(self, *args):
+            return self
+        def order(self, *args, **kwargs):
+            return self
+        def execute(self):
+            return type('obj', (object,), {'data': []})
+    supabase = DummySupabase()
 
-# Configurar credenciales de Google antes de importar el procesador
-import json
-
-BASE_DIR = os.path.dirname(os.path.dirname(__file__))
-cred_path = os.path.join(BASE_DIR, 'credentials.json')
-
-# Si estamos en Render u otra nube, podemos pasar el JSON como string en una variable de entorno
-if os.environ.get("GOOGLE_CREDENTIALS_JSON"):
-    try:
-        creds_data = json.loads(os.environ.get("GOOGLE_CREDENTIALS_JSON"))
-        if "private_key" in creds_data:
-            creds_data["private_key"] = creds_data["private_key"].replace('\\n', '\n')
-        with open(cred_path, "w") as f:
-            json.dump(creds_data, f)
-    except Exception as e:
-        print("Error al escribir credentials.json:", e)
-
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = cred_path
-
-# Supabase CRM Config — leído desde variables de entorno
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-if not SUPABASE_URL or not SUPABASE_KEY:
-    raise RuntimeError("ERROR: Faltan variables de entorno SUPABASE_URL o SUPABASE_KEY. Configura el archivo .env")
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-from procesador_gastos import preprocess_image, extract_text_from_image, parse_receipt_data
-from google_services import upload_image_to_drive, overwrite_sheets
-from typing import List, Optional
+try:
+    from google import genai
+    from google.genai import types
+except ImportError:
+    genai = None
 
 app = FastAPI(title="API Rendición de Gastos")
 
-_allowed_origins_raw = os.environ.get("ALLOWED_ORIGINS", "http://localhost:5173,https://gastos-ocr.vercel.app")
-ALLOWED_ORIGINS_LIST = [o.strip() for o in _allowed_origins_raw.split(",") if o.strip()]
+origins = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "https://gastos-ocr.vercel.app",
+    "https://gastos-ocr-frontend.vercel.app"
+]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS_LIST,
+    allow_origins=origins,
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-User-Email"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-class EditExpenseRequest(BaseModel):
-    departamento: str
-    centro_costo: str
-    rut_proveedor: Optional[str] = ""
-    fecha_boleta: Optional[str] = None
-    monto_total: float
-    tipo_transaccion: Optional[str] = "Boleta"
-    origen_fondos: Optional[str] = "Caja Principal"
-    monto_caja: float = 0
-    monto_nc: float = 0
-    clasificacion_sin_respaldo: Optional[str] = None
-    estado: Optional[str] = "Pendiente de Revisión"
-    factura_asociada: Optional[str] = ""
-    comentarios_revisor: Optional[str] = ""
-    descripcion: Optional[str] = ""
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 class SaveExpenseRequest(BaseModel):
     id: str
@@ -144,113 +151,44 @@ class SaveExpenseRequest(BaseModel):
     usuario_email: str
     departamento: str
     centro_costo: str
-    rut_proveedor: Optional[str] = ""
+    rut_proveedor: Optional[str] = None
     fecha_boleta: Optional[str] = None
     monto_total: float
     iva: float
-    link_drive: str
+    link_drive: Optional[str] = None
     tipo_transaccion: Optional[str] = "Boleta"
     origen_fondos: Optional[str] = "Caja Principal"
-    monto_caja: float = 0
-    monto_nc: float = 0
+    monto_caja: Optional[float] = 0.0
+    monto_nc: Optional[float] = 0.0
     clasificacion_sin_respaldo: Optional[str] = None
     estado: Optional[str] = "Pendiente de Revisión"
-    factura_asociada: Optional[str] = ""
-    comentarios_revisor: Optional[str] = ""
-    descripcion: Optional[str] = ""
+    factura_asociada: Optional[str] = None
+    comentarios_revisor: Optional[str] = None
+    descripcion: Optional[str] = None
 
-class ExportRequest(BaseModel):
-    rows: List[list]
+class EditExpenseRequest(BaseModel):
+    departamento: str
+    centro_costo: str
+    rut_proveedor: Optional[str] = None
+    fecha_boleta: Optional[str] = None
+    monto_total: float
+    tipo_transaccion: Optional[str] = "Boleta"
+    origen_fondos: Optional[str] = "Caja Principal"
+    monto_caja: Optional[float] = 0.0
+    monto_nc: Optional[float] = 0.0
+    clasificacion_sin_respaldo: Optional[str] = None
+    estado: Optional[str] = "Pendiente de Revisión"
+    factura_asociada: Optional[str] = None
+    comentarios_revisor: Optional[str] = None
+    descripcion: Optional[str] = None
 
 class UpdateStatusRequest(BaseModel):
     id: str
     estado: str
-    comentarios_revisor: Optional[str] = ""
+    comentarios_revisor: Optional[str] = None
 
-def _validate_uploaded_file(file: UploadFile) -> None:
-    """Valida extensión y tipo MIME del archivo subido."""
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="Nombre de archivo inválido")
-    ext = os.path.splitext(file.filename.lower())[1]
-    if ext not in ALLOWED_EXTENSIONS:
-        raise HTTPException(status_code=400, detail=f"Extensión no permitida. Use: {', '.join(ALLOWED_EXTENSIONS)}")
-    if file.content_type and file.content_type not in ALLOWED_MIME_TYPES:
-        raise HTTPException(status_code=400, detail="Tipo de archivo no permitido")
-
-@app.get("/debug-creds")
-async def debug_creds():
-    root_cred = os.path.join(os.path.dirname(os.path.dirname(__file__)), "credentials.json")
-    env_cred = os.environ.get("GOOGLE_CREDENTIALS_JSON")
-    
-    info = {
-        "root_file_exists": os.path.exists(root_cred),
-        "env_var_exists": bool(env_cred),
-    }
-    
-    root_data = {}
-    env_data = {}
-    
-    if os.path.exists(root_cred):
-        with open(root_cred, "r") as f:
-            try:
-                root_data = json.load(f)
-            except Exception as e:
-                info["root_file_err"] = str(e)
-                
-    if env_cred:
-        try:
-            env_data = json.loads(env_cred)
-            if "private_key" in env_data:
-                env_data["private_key"] = env_data["private_key"].replace('\\n', '\n')
-        except Exception as e:
-            info["env_err"] = str(e)
-            
-    info["exact_dict_match"] = (root_data == env_data)
-    
-    if not info["exact_dict_match"]:
-        root_keys = set(root_data.keys())
-        env_keys = set(env_data.keys())
-        info["missing_in_env"] = list(root_keys - env_keys)
-        info["missing_in_root"] = list(env_keys - root_keys)
-        
-        for k in root_keys.intersection(env_keys):
-            if root_data[k] != env_data[k]:
-                info[f"diff_key_{k}"] = True
-                
-    info["render_secret_file_exists"] = os.path.exists('/etc/secrets/credentials.json')
-    if info["render_secret_file_exists"]:
-        with open('/etc/secrets/credentials.json', 'r') as f:
-            try:
-                secret_data = json.load(f)
-                info["secret_data_matches_env"] = (secret_data == env_data)
-            except Exception as e:
-                info["secret_data_err"] = str(e)
-                
-    if info["exact_dict_match"]:
-        import google.auth.transport.requests
-        from google.oauth2 import service_account
-        
-        info["test_tokens"] = {}
-        request = google.auth.transport.requests.Request()
-        
-        try:
-            creds_drive = service_account.Credentials.from_service_account_info(
-                root_data, scopes=['https://www.googleapis.com/auth/drive.file', 'https://www.googleapis.com/auth/spreadsheets'])
-            creds_drive.refresh(request)
-            info["test_tokens"]["drive"] = "SUCCESS"
-        except Exception as e:
-            info["test_tokens"]["drive"] = str(e)
-            
-        if info.get("secret_data_matches_env") is False:
-            try:
-                creds_secret = service_account.Credentials.from_service_account_info(
-                    secret_data, scopes=['https://www.googleapis.com/auth/cloud-platform'])
-                creds_secret.refresh(request)
-                info["test_tokens"]["secret_file_vision"] = "SUCCESS"
-            except Exception as e:
-                info["test_tokens"]["secret_file_vision"] = str(e)
-                
-    return info
+class ExportRequest(BaseModel):
+    rows: List[List[str]]
 
 @app.post("/upload-receipt")
 async def upload_receipt(
@@ -259,124 +197,148 @@ async def upload_receipt(
     userEmail: str = Form(...),
     department: str = Form(...),
     costCenter: str = Form(...),
-    skip_ocr: str = Form("false")
+    skip_ocr: Optional[str] = Form(None)
 ):
     try:
-        # Validar tipo y extensión del archivo
-        _validate_uploaded_file(file)
+        # 1. Validar extensión
+        _, ext = os.path.splitext(file.filename or "")
+        ext = ext.lower()
+        if ext not in ALLOWED_EXTENSIONS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Extensión de archivo no permitida ({ext}). Solo se aceptan: {', '.join(ALLOWED_EXTENSIONS)}"
+            )
 
-        # Validar tamaño máximo
-        file_content = await file.read()
-        if len(file_content) > MAX_FILE_SIZE_BYTES:
-            raise HTTPException(status_code=413, detail=f"Archivo demasiado grande. Máximo permitido: {MAX_FILE_SIZE_MB}MB")
-        # Rebobinar el archivo para poder leerlo después
-        import io
-        file.file = io.BytesIO(file_content)
+        # 2. Validar Content-Type
+        if file.content_type and file.content_type not in ALLOWED_MIME_TYPES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Tipo de archivo no permitido ({file.content_type}). Solo se aceptan imágenes (JPEG, PNG) y PDF."
+            )
 
-        # Generar ID único para este gasto
-        expense_id = str(uuid.uuid4())
+        # 3. Leer contenido y validar tamaño
+        content = await file.read()
+        file_size = len(content)
 
-        # 1. Guardar archivo en carpeta temporal segura
-        tmp_dir = os.path.join(BASE_DIR, "tmp_uploads")
-        os.makedirs(tmp_dir, exist_ok=True)
-        safe_filename = f"{uuid.uuid4()}{os.path.splitext(file.filename)[1].lower()}"
-        temp_filename = f"temp_{safe_filename}"
-        temp_filepath = os.path.join(tmp_dir, temp_filename)
-        
-        with open(temp_filepath, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-            
-        # 1.5. Si es PDF, convertir la primera página a imagen
-        if file.filename.lower().endswith(".pdf") or file.content_type == "application/pdf":
-            try:
-                doc = fitz.open(temp_filepath)
-                if len(doc) > 0:
-                    page = doc.load_page(0)
-                    pix = page.get_pixmap(dpi=300)
-                    pdf_img_filename = f"pdf_img_{uuid.uuid4()}.jpg"
-                    pdf_img_filepath = os.path.join(BASE_DIR, pdf_img_filename)
-                    pix.save(pdf_img_filepath)
-                    
-                    # Limpiar el PDF original y apuntar a la imagen generada
-                    os.remove(temp_filepath)
-                    temp_filepath = pdf_img_filepath
-                    temp_filename = pdf_img_filename
-                    
-                    # Actualizar el nombre para cuando se suba a Google Drive
-                    file.filename = pdf_img_filename
-                doc.close()
-            except Exception as e:
-                print(f"Error procesando PDF: {str(e)}")
-                return {"success": False, "error": f"Error leyendo PDF: {str(e)}"}
-            
-        # 2. Preprocesar imagen con OpenCV
-        ocr_error = False
-        ocr_error_msg = ""
-        datos_estructurados = {}
-        upload_target = temp_filepath
-        
-        if skip_ocr.lower() != "true":
-            try:
-                optimized_filepath = os.path.join(tmp_dir, f"opt_{temp_filename}")
-                upload_target = preprocess_image(temp_filepath, optimized_filepath)
-                texto_extraido = extract_text_from_image(upload_target)
-                datos_estructurados = parse_receipt_data(texto_extraido)
-            except Exception as e:
-                print(f"OCR Error: {str(e)}")
-                ocr_error = True
-                ocr_error_msg = str(e)
-        
-        # 5. Subir la imagen procesada (u original) a Google Drive
-        drive_link = upload_image_to_drive(upload_target, file.filename)
-        
-        # 6. Preparar datos
-        fecha_captura = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        monto_str = str(datos_estructurados.get("monto_total", "0")).replace(".", "").replace(",", "")
-        try:
-            monto_int = int(monto_str)
-            # IVA en Chile es 19% sobre el Neto. Si tenemos el Total (Bruto), el IVA es Total * 19 / 119.
-            iva = round((monto_int * 19) / 119)
-        except:
-            monto_int = 0
-            iva = 0
+        if file_size == 0:
+            raise HTTPException(status_code=400, detail="El archivo está vacío.")
 
-        # NO Guardamos en BD todavía, solo devolvemos los datos para revisión
-        supabase_data = {
-            "id": expense_id,
-            "usuario_nombre": userName,
-            "usuario_email": userEmail,
-            "departamento": department,
-            "centro_costo": costCenter,
-            "rut_proveedor": datos_estructurados.get("rut_proveedor", ""),
-            "fecha_boleta": datos_estructurados.get("fecha", ""),
-            "monto_total": monto_int,
-            "iva": iva,
-            "link_drive": drive_link
-        }
-        
-        # 7. Limpiar archivos temporales
-        if os.path.exists(temp_filepath):
-            os.remove(temp_filepath)
-        if 'optimized_filepath' in locals() and os.path.exists(optimized_filepath):
-            os.remove(optimized_filepath)
-            
-        if ocr_error:
-            return {
-                "success": False,
-                "error": f"Error de lectura: {ocr_error_msg}",
-                "data": supabase_data
+        if file_size > MAX_FILE_SIZE_BYTES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"El archivo excede el tamaño máximo permitido de {MAX_FILE_SIZE_MB}MB (tamaño actual: {file_size / (1024*1024):.1f}MB)."
+            )
+
+        # Determinar MIME type
+        mime_type = file.content_type or ("application/pdf" if ext == ".pdf" else "image/jpeg")
+
+        # 4. Subir a Google Drive
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe_name = f"{timestamp}_{file.filename}"
+        link_drive = upload_to_drive(content, safe_name)
+
+        if skip_ocr == "true":
+            parsed_data = {
+                "rut_proveedor": "",
+                "fecha_boleta": datetime.now().strftime("%Y-%m-%d"),
+                "monto_total": 0,
+                "iva": 0
             }
-        
+        else:
+            if not GEMINI_API_KEY:
+                raise HTTPException(status_code=500, detail="GEMINI_API_KEY no configurada")
+
+            client = genai.Client(api_key=GEMINI_API_KEY)
+
+            prompt = """
+            Eres un experto en lectura de boletas y facturas chilenas.
+            Analiza el documento adjunto y extrae los siguientes campos en formato JSON estricto:
+            - rut_proveedor: El RUT de la empresa o emisor (ej: "76.123.456-7" o "12345678-9"). Si no es legible o no existe, retorna null.
+            - fecha_boleta: Fecha de emisión en formato YYYY-MM-DD. Si no es legible, retorna la fecha de hoy.
+            - monto_total: Monto total final a pagar (número entero o decimal, sin puntos de miles ni signo $). Si no es legible, retorna 0.
+            - iva: Monto del IVA si está explícito o es factura. Si no aparece (típico en boletas), calcula IVA = round((monto_total * 19) / 119).
+
+            Devuelve ÚNICAMENTE el bloque JSON, sin markdown, sin ```json```, solo texto JSON puro.
+            Ejemplo:
+            {"rut_proveedor": "76.452.123-K", "fecha_boleta": "2023-10-25", "monto_total": 15990, "iva": 2553}
+            """
+
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=[
+                    types.Part.from_bytes(
+                        data=content,
+                        mime_type=mime_type,
+                    ),
+                    prompt
+                ]
+            )
+
+            raw_text = response.text.strip()
+            # Limpiar posibles bloques markdown
+            if raw_text.startswith("```json"):
+                raw_text = raw_text[7:]
+            if raw_text.startswith("```"):
+                raw_text = raw_text[3:]
+            if raw_text.endswith("```"):
+                raw_text = raw_text[:-3]
+            raw_text = raw_text.strip()
+
+            try:
+                parsed_data = json.loads(raw_text)
+            except json.JSONDecodeError:
+                # Si Gemini falla en devolver JSON válido, fallback
+                parsed_data = {
+                    "rut_proveedor": None,
+                    "fecha_boleta": datetime.now().strftime("%Y-%m-%d"),
+                    "monto_total": 0,
+                    "iva": 0
+                }
+
+        # Generar un ID único para la transacción
+        import uuid
+        transaccion_id = str(uuid.uuid4())
+
         return {
             "success": True,
-            "data": supabase_data
+            "data": {
+                "id": transaccion_id,
+                "usuario_nombre": userName,
+                "usuario_email": userEmail,
+                "departamento": department,
+                "centro_costo": costCenter,
+                "rut_proveedor": parsed_data.get("rut_proveedor"),
+                "fecha_boleta": parsed_data.get("fecha_boleta"),
+                "monto_total": parsed_data.get("monto_total", 0),
+                "iva": parsed_data.get("iva", 0),
+                "link_drive": link_drive
+            }
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error procesando boleta: {str(e)}")
-        return {"success": False, "error": "Error interno al procesar el archivo"}
+        import traceback
+        err_msg = str(e)
+        print(f"Error procesando boleta: {err_msg}")
+        traceback.print_exc()
+        # Fallback estructurado en caso de error de OCR / API
+        return {
+            "success": False,
+            "error": f"Error del servidor de IA: {err_msg}",
+            "data": {
+                "id": str(uuid.uuid4()) if 'uuid' in locals() else "temp-id",
+                "usuario_nombre": userName,
+                "usuario_email": userEmail,
+                "departamento": department,
+                "centro_costo": costCenter,
+                "rut_proveedor": None,
+                "fecha_boleta": datetime.now().strftime("%Y-%m-%d"),
+                "monto_total": 0,
+                "iva": 0,
+                "link_drive": link_drive if 'link_drive' in locals() else None
+            }
+        }
 
 @app.post("/save-receipt")
 async def save_receipt(data: SaveExpenseRequest, background_tasks: BackgroundTasks):
@@ -452,21 +414,21 @@ async def export_sheets(data: ExportRequest):
         return {"success": False, "error": "Error interno al exportar a Sheets"}
 
 @app.get("/history")
-async def history(email: str):
+async def get_history(email: str):
     try:
-        # Obtenemos historial directamente de Supabase (CRM)
+        # Obtenemos solo los gastos del usuario que consulta
         response = supabase.table("transacciones").select("*").eq("usuario_email", email).order("fecha_captura", desc=True).execute()
         return {"success": True, "data": response.data}
     except Exception as e:
         print(f"Error obteniendo historial: {str(e)}")
-        return {"success": False, "error": "Error interno al obtener el historial"}
+        return {"success": False, "error": "Error interno al obtener historial"}
 
 @app.get("/capital/{email}")
 async def get_capital(email: str):
     try:
-        response = supabase.table("capital_entregado").select("monto_asignado").eq("email_usuario", email).execute()
-        if response.data:
-            return {"success": True, "monto_asignado": response.data[0]["monto_asignado"]}
+        response = supabase.table("capital_usuario").select("monto_asignado").eq("usuario_email", email).execute()
+        if response.data and len(response.data) > 0:
+            return {"success": True, "monto_asignado": response.data[0].get("monto_asignado", 0)}
         return {"success": True, "monto_asignado": 0}
     except Exception as e:
         print(f"Error obteniendo capital: {str(e)}")
@@ -490,10 +452,10 @@ async def admin_history(request: Request, email: str):
 @app.post("/update-expense-status")
 async def update_expense_status(data: UpdateStatusRequest, request: Request):
     try:
-        # Verificar permisos de administrador para cambios de estado
+        # Verificar permisos de aprobación (Solo Gerardo y José)
         header_email = request.headers.get("X-User-Email", "").lower()
-        if header_email and header_email not in ADMIN_EMAILS:
-            raise HTTPException(status_code=403, detail="Solo administradores pueden cambiar el estado de una rendición")
+        if not header_email or header_email not in APPROVER_EMAILS:
+            raise HTTPException(status_code=403, detail="Solo Gerencia/Finanzas (Gerardo y José) tienen autorización para aprobar o rechazar rendiciones")
 
         response = supabase.table("transacciones").update({
             "estado": data.estado,
@@ -510,8 +472,8 @@ async def update_expense_status(data: UpdateStatusRequest, request: Request):
 async def delete_expense(expense_id: str, request: Request):
     try:
         header_email = request.headers.get("X-User-Email", "").lower()
-        if header_email and header_email not in ADMIN_EMAILS:
-            raise HTTPException(status_code=403, detail="Solo administradores pueden eliminar registros")
+        if not header_email or header_email not in APPROVER_EMAILS:
+            raise HTTPException(status_code=403, detail="Solo Gerencia/Finanzas (Gerardo y José) pueden eliminar registros")
 
         # 1. Eliminar en Supabase
         supabase.table("transacciones").delete().eq("id", expense_id).execute()
@@ -526,7 +488,7 @@ async def delete_expense(expense_id: str, request: Request):
 async def edit_expense(expense_id: str, data: EditExpenseRequest, request: Request):
     try:
         header_email = request.headers.get("X-User-Email", "").lower()
-        is_admin = header_email in ADMIN_EMAILS
+        is_approver = header_email in APPROVER_EMAILS
 
         # Obtener gasto original de Supabase
         response = supabase.table("transacciones").select("*").eq("id", expense_id).execute()
@@ -562,8 +524,8 @@ async def edit_expense(expense_id: str, data: EditExpenseRequest, request: Reque
             final_monto_caja = nuevo_monto
             final_monto_nc = 0.0
 
-        # Protección RBAC: Si el usuario no es admin, no puede cambiar el estado existente
-        if is_admin and data.estado:
+        # Protección RBAC: Solo los aprobadores autorizados pueden cambiar el estado existente
+        if is_approver and data.estado:
             final_estado = data.estado
         else:
             final_estado = old_expense.get("estado", "Pendiente de Revisión")
