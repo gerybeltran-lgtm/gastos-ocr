@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Camera, Upload, CheckCircle, FileText, RefreshCcw, DollarSign, Calendar, Hash, User, ShieldAlert, History, Filter, Edit2, Trash2, X, PieChart, Users, Building2, BarChart3, ArrowRight, LogOut, AlertTriangle, ArrowDownCircle, Wallet, AlertCircle, HelpCircle, ChevronDown, HardDriveDownload } from 'lucide-react';
+import { Camera, Upload, CheckCircle, FileText, RefreshCcw, DollarSign, Calendar, Hash, User, ShieldAlert, History, Filter, Edit2, Trash2, X, PieChart, Users, Building2, BarChart3, ArrowRight, LogOut, AlertTriangle, ArrowDownCircle, Wallet, AlertCircle, HelpCircle, ChevronDown, HardDriveDownload, Ban } from 'lucide-react';
 import { useGoogleLogin } from '@react-oauth/google';
 import { jwtDecode } from 'jwt-decode';
 import axios from 'axios';
@@ -348,9 +348,10 @@ function App() {
 
   const handleUpdateStatus = async (id, nuevoEstado) => {
     let comentarios = "";
-    if (nuevoEstado === 'Rechazado') {
-      comentarios = window.prompt("Por favor, ingresa el motivo del rechazo:");
-      if (comentarios === null) return; // Cancelado
+    if (nuevoEstado === 'Rechazado' || nuevoEstado === 'Anulado') {
+      const motivo = window.prompt(`Por favor, ingresa el motivo del ${nuevoEstado === 'Anulado' ? 'anulación' : 'rechazo'}:`);
+      if (motivo === null) return; // Cancelado por el usuario
+      comentarios = motivo;
     }
     
     try {
@@ -358,11 +359,13 @@ function App() {
         id,
         estado: nuevoEstado,
         comentarios_revisor: comentarios
+      }, {
+        headers: { 'X-User-Email': user?.email || '' }
       });
       fetchHistory();
     } catch (err) {
       console.error("Error updating status", err);
-      showError("Error", "Hubo un error al actualizar el estado");
+      showError("Error", err.response?.data?.detail || "Hubo un error al actualizar el estado");
     }
   };
 
@@ -373,11 +376,13 @@ function App() {
       async () => {
         setDialog({ isOpen: false });
         try {
-          await axios.delete(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/expense/${id}`);
+          await axios.delete(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/expense/${id}`, {
+            headers: { 'X-User-Email': user?.email || '' }
+          });
           fetchHistory();
         } catch (err) {
           console.error("Error deleting", err);
-          showError("Error", "Hubo un error al eliminar el registro.");
+          showError("Error", err.response?.data?.detail || "Hubo un error al eliminar el registro.");
         }
       }
     );
@@ -390,20 +395,31 @@ function App() {
       centro_costo: exp.centro_costo,
       rut_proveedor: exp.rut_proveedor,
       fecha_boleta: exp.fecha_boleta,
-      fecha_boleta: exp.fecha_boleta,
       monto_total: exp.monto_total,
+      tipo_transaccion: exp.tipo_transaccion || 'Boleta',
+      origen_fondos: exp.origen_fondos || 'Caja Principal',
+      monto_caja: exp.monto_caja || 0,
+      monto_nc: exp.monto_nc || 0,
+      clasificacion_sin_respaldo: exp.clasificacion_sin_respaldo || '',
+      factura_asociada: exp.factura_asociada || '',
+      descripcion: exp.descripcion || '',
+      comentarios_revisor: exp.comentarios_revisor || '',
       estado: exp.estado || 'Pendiente de Revisión'
     });
   };
 
   const handleEditSubmit = async () => {
     try {
-      await axios.put(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/expense/${editingExpense.id}`, editForm);
+      await axios.put(
+        `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/expense/${editingExpense.id}`, 
+        editForm,
+        { headers: { 'X-User-Email': user?.email || '' } }
+      );
       setEditingExpense(null);
       fetchHistory();
     } catch (err) {
       console.error("Error updating", err);
-      showError("Error", "Error al actualizar el gasto");
+      showError("Error", err.response?.data?.detail || "Error al actualizar el gasto");
     }
   };
 
@@ -429,6 +445,8 @@ function App() {
           "RUT Proveedor", 
           "Fecha Boleta", 
           "Monto Total", 
+          "Monto Caja Principal",
+          "Monto Casa Comercial (NC)",
           "IVA", 
           "Link Boleta",
           "Tipo Transacción",
@@ -450,6 +468,8 @@ function App() {
           exp.rut_proveedor || "",
           exp.fecha_boleta || "",
           exp.monto_total || 0,
+          exp.monto_caja || 0,
+          exp.monto_nc || 0,
           exp.iva || 0,
           exp.link_drive || "",
           exp.tipo_transaccion || "Boleta",
@@ -490,9 +510,14 @@ function App() {
     return matchDept && matchCC && matchUser && matchEstado && matchTipo;
   });
 
-  // KPIs Financieros
+  const isRejectedOrVoid = (estado) => {
+    const s = (estado || '').toLowerCase().trim();
+    return s === 'rechazado' || s === 'rechazada' || s === 'anulado' || s === 'anulada';
+  };
+
+  // KPIs Financieros Segregados (TAREA 1 & 3: Tres Bolsas Contables Independientes + Filtro WHERE estado NOT IN ('RECHAZADO', 'ANULADO'))
   const finanzas = useMemo(() => {
-    let fondosDisponibles = activeTab === 'admin' ? 0 : capitalEntregado; // Si es admin, podríamos sumar todo el capital, pero mejor empezar en 0 y sumar ingresos
+    let fondosDisponibles = activeTab === 'admin' ? 0 : capitalEntregado;
     let enTramiteCaja = 0;
     let saldosAFavor = 0;
     let enTramiteNC = 0;
@@ -505,32 +530,33 @@ function App() {
       const mCaja = parseFloat(exp.monto_caja) || 0;
       const mNC = parseFloat(exp.monto_nc) || 0;
       const iva = parseFloat(exp.iva) || 0;
-      const isApproved = exp.estado === 'Aprobado' || exp.estado === 'Aprobada';
-      const isPending = exp.estado === 'Pendiente de Revisión' || exp.estado === 'Pendiente';
-      const isRejected = exp.estado === 'Rechazado' || exp.estado === 'Rechazada';
+      const estadoNorm = (exp.estado || '').toLowerCase().trim();
+      const isApproved = estadoNorm === 'aprobado' || estadoNorm === 'aprobada';
+      const isPending = estadoNorm === 'pendiente de revisión' || estadoNorm === 'pendiente';
       
-      if (isRejected) return;
+      // Regla Backend & Frontend: Inyectar filtro WHERE estado NOT IN ('RECHAZADO', 'ANULADO')
+      if (isRejectedOrVoid(exp.estado)) return;
 
-      // Ingresos a la Caja Principal
+      // 1. Caja Principal (Efectivo/Liquidez)
       if (exp.tipo_transaccion === 'Saldo Inicial' || exp.tipo_transaccion === 'Ingreso de Dinero') {
         if (isApproved) fondosDisponibles += monto;
       } 
-      // Notas de Crédito
+      // 2. Casa Comercial (Billetera Virtual / Notas de Crédito) - *Nunca sumar a Caja Principal*
       else if (exp.tipo_transaccion === 'Nota de Crédito') {
         if (isApproved) {
           saldosAFavor += monto;
           ivaAcumulado += iva;
         }
       }
-      // Gastos (Boleta, Factura, Sin Respaldo)
+      // 3. Gastos Operativos / Sin Respaldo
       else {
-        // Acumular el total gastado (Aprobado)
         if (isApproved) {
-           totalGastado += monto;
-           ivaAcumulado += iva;
+          totalGastado += monto;
+          ivaAcumulado += iva;
         }
 
-        if (exp.tipo_transaccion === 'Gasto Sin Respaldo' || exp.tipo_transaccion === 'Sin Respaldo') {
+        // Bolsa 3: Cuentas por Recuperar (Gastos Sin Respaldo / Nómina)
+        if (exp.tipo_transaccion === 'Gasto Sin Respaldo' || exp.tipo_transaccion === 'Sin Respaldo' || exp.origen_fondos === 'Cuentas por Recuperar') {
             if (isApproved) fondosSinRespaldo += monto;
         }
 
@@ -570,7 +596,7 @@ function App() {
   const totalInvoices = filteredExpenses.length;
 
   const isValidExpense = (exp) => {
-    return exp.estado !== 'Rechazado' && 
+    return !isRejectedOrVoid(exp.estado) && 
            exp.tipo_transaccion !== 'Saldo Inicial' && 
            exp.tipo_transaccion !== 'Ingreso de Dinero' && 
            exp.tipo_transaccion !== 'Nota de Crédito';
@@ -828,16 +854,65 @@ function App() {
                       </div>
 
                       {origenFondos === 'Fondos Mixtos' && (
-                        <>
-                          <div className="pt-2 border-t border-slate-100 mt-4">
-                            <label className="block text-xs font-bold text-emerald-600 mb-1 uppercase">Monto pagado desde Caja Principal</label>
-                            <input type="number" value={montoCaja} onChange={(e) => setMontoCaja(e.target.value)} placeholder="Ej: 50000" className="w-full bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 text-sm font-bold" />
+                        <div className="pt-3 border-t border-slate-100 mt-4 bg-amber-50/50 p-4 rounded-xl border border-amber-100 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Desglose Pago Mixto</span>
+                            <span className="text-[11px] font-bold text-slate-500">Total: ${parseFloat(reviewData.monto_total || 0).toLocaleString('es-CL')}</span>
                           </div>
+                          
                           <div>
-                            <label className="block text-xs font-bold text-purple-600 mb-1 uppercase">Monto cubierto por Casa Comercial (NC)</label>
-                            <input type="number" value={montoNC} onChange={(e) => setMontoNC(e.target.value)} placeholder="Ej: 20000" className="w-full bg-purple-50 border border-purple-200 rounded-lg px-3 py-2 text-sm font-bold" />
+                            <label className="block text-xs font-bold text-emerald-700 mb-1 uppercase">1. Monto Caja Principal (Liquidez Real)</label>
+                            <input 
+                              type="number" 
+                              value={montoCaja} 
+                              onChange={(e) => setMontoCaja(e.target.value)} 
+                              placeholder="Ej: 50000" 
+                              className="w-full bg-white border border-emerald-300 rounded-lg px-3 py-2 text-sm font-bold text-emerald-800 outline-none focus:ring-2 focus:ring-emerald-500/20" 
+                            />
                           </div>
-                        </>
+                          
+                          <div>
+                            <label className="block text-xs font-bold text-purple-700 mb-1 uppercase">2. Monto Nota de Crédito (Saldo Tienda)</label>
+                            <input 
+                              type="number" 
+                              value={montoNC} 
+                              onChange={(e) => setMontoNC(e.target.value)} 
+                              placeholder="Ej: 20000" 
+                              className="w-full bg-white border border-purple-300 rounded-lg px-3 py-2 text-sm font-bold text-purple-800 outline-none focus:ring-2 focus:ring-purple-500/20" 
+                            />
+                          </div>
+
+                          {/* Validación matemática en tiempo real */}
+                          {(() => {
+                            const valCaja = parseFloat(montoCaja) || 0;
+                            const valNC = parseFloat(montoNC) || 0;
+                            const totalDoc = parseFloat(reviewData.monto_total) || 0;
+                            const suma = valCaja + valNC;
+                            const diff = totalDoc - suma;
+                            const isValid = Math.abs(diff) <= 0.01 && valCaja > 0 && valNC > 0;
+
+                            if (isValid) {
+                              return (
+                                <div className="p-2 bg-emerald-100/80 border border-emerald-300 rounded-lg text-emerald-800 text-xs font-bold flex items-center gap-1.5">
+                                  <CheckCircle className="h-4 w-4 shrink-0" />
+                                  <span>Desglose cuadrado correctamente: ${suma.toLocaleString('es-CL')}</span>
+                                </div>
+                              );
+                            } else {
+                              return (
+                                <div className="p-2.5 bg-rose-100/80 border border-rose-300 rounded-lg text-rose-700 text-xs font-bold space-y-0.5">
+                                  <div className="flex items-center gap-1.5">
+                                    <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600" />
+                                    <span>Suma actual: ${suma.toLocaleString('es-CL')} de ${totalDoc.toLocaleString('es-CL')}</span>
+                                  </div>
+                                  <p className="text-[11px] font-medium text-rose-600 pl-5.5">
+                                    {diff > 0 ? `Faltan $${diff.toLocaleString('es-CL')} por asignar.` : `Excedido por $${Math.abs(diff).toLocaleString('es-CL')}.`}
+                                  </p>
+                                </div>
+                              );
+                            }
+                          })()}
+                        </div>
                       )}
 
                       {transactionType === 'Sin Respaldo' && (
@@ -891,8 +966,26 @@ function App() {
 
                     <button 
                       onClick={handleSaveReceipt}
-                      disabled={isSaving || (transactionType === 'Nota de Crédito' && !facturaAsociada.trim()) || (transactionType === 'Sin Respaldo' && (!clasificacionSinRespaldo || !descripcion.trim()))}
-                      className={`mt-8 w-full py-4 rounded-xl font-bold flex items-center justify-center gap-3 text-lg ${isSaving || (transactionType === 'Nota de Crédito' && !facturaAsociada.trim()) || (transactionType === 'Sin Respaldo' && (!clasificacionSinRespaldo || !descripcion.trim())) ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-sm tracking-wide transition-colors'}`}
+                      disabled={
+                        isSaving || 
+                        (transactionType === 'Nota de Crédito' && !facturaAsociada.trim()) || 
+                        (transactionType === 'Sin Respaldo' && (!clasificacionSinRespaldo || !descripcion.trim())) ||
+                        (origenFondos === 'Fondos Mixtos' && (
+                          !montoCaja || !montoNC || 
+                          Math.abs(((parseFloat(montoCaja) || 0) + (parseFloat(montoNC) || 0)) - (parseFloat(reviewData.monto_total) || 0)) > 0.01
+                        ))
+                      }
+                      className={`mt-8 w-full py-4 rounded-xl font-bold flex items-center justify-center gap-3 text-lg ${
+                        isSaving || 
+                        (transactionType === 'Nota de Crédito' && !facturaAsociada.trim()) || 
+                        (transactionType === 'Sin Respaldo' && (!clasificacionSinRespaldo || !descripcion.trim())) ||
+                        (origenFondos === 'Fondos Mixtos' && (
+                          !montoCaja || !montoNC || 
+                          Math.abs(((parseFloat(montoCaja) || 0) + (parseFloat(montoNC) || 0)) - (parseFloat(reviewData.monto_total) || 0)) > 0.01
+                        ))
+                        ? 'bg-slate-100 text-slate-400 cursor-not-allowed' 
+                        : 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-sm tracking-wide transition-colors'
+                      }`}
                     >
                       {isSaving ? (
                         <><RefreshCcw className="h-6 w-6 animate-spin" /> Guardando...</>
@@ -1407,10 +1500,11 @@ function App() {
                               <p className="text-xs text-slate-400 mt-0.5 ">{exp.centro_costo}</p>
                             </td>
                             <td className="p-5 text-center">
-                              <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                                exp.estado === 'Aprobado' ? 'bg-emerald-100 text-emerald-700' :
-                                exp.estado === 'Rechazado' ? 'bg-rose-100 text-rose-700' :
-                                'bg-amber-100 text-amber-700'
+                              <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                (exp.estado === 'Aprobado' || exp.estado === 'Aprobada') ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' :
+                                (exp.estado === 'Rechazado' || exp.estado === 'Rechazada') ? 'bg-rose-100 text-rose-700 border border-rose-200' :
+                                (exp.estado === 'Anulado' || exp.estado === 'Anulada') ? 'bg-slate-100 text-slate-600 border border-slate-300' :
+                                'bg-amber-100 text-amber-700 border border-amber-200'
                               }`}>
                                 {exp.estado || 'Pendiente'}
                               </span>
@@ -1427,15 +1521,24 @@ function App() {
                             </td>
                             <td className="p-5 text-right">
                               <div className="flex items-center justify-end gap-1.5">
-                                {activeTab === 'admin' && exp.estado === 'Pendiente' && (
+                                {isAdmin && (exp.estado === 'Pendiente' || exp.estado === 'Pendiente de Revisión') && (
                                   <>
-                                    <button onClick={() => handleUpdateStatus(exp.id, 'Aprobado')} className="p-1.5 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-all" title="Aprobar">
+                                    <button onClick={() => handleUpdateStatus(exp.id, 'Aprobado')} className="p-1.5 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-all" title="Aprobar Rendición">
                                       <CheckCircle className="h-4 w-4" />
                                     </button>
-                                    <button onClick={() => handleUpdateStatus(exp.id, 'Rechazado')} className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-all" title="Rechazar">
+                                    <button onClick={() => handleUpdateStatus(exp.id, 'Rechazado')} className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-all" title="Rechazar Rendición">
                                       <X className="h-4 w-4" />
                                     </button>
                                   </>
+                                )}
+                                {isAdmin && exp.estado !== 'Anulado' && exp.estado !== 'Anulada' && (
+                                  <button 
+                                    onClick={() => handleUpdateStatus(exp.id, 'Anulado')} 
+                                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all" 
+                                    title="Anular Transacción"
+                                  >
+                                    <Ban className="h-4 w-4" />
+                                  </button>
                                 )}
                                 <button 
                                   onClick={() => startEdit(exp)}
@@ -1444,7 +1547,7 @@ function App() {
                                 >
                                   <Edit2 className="h-4 w-4" />
                                 </button>
-                                {activeTab === 'admin' && (
+                                {isAdmin && (
                                   <button 
                                     onClick={() => handleDelete(exp.id)}
                                     className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
@@ -1488,39 +1591,68 @@ function App() {
                       </div>
                       <div>
                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Monto Total ($)</label>
-                        <input type="number" value={editForm.monto_total} onChange={e => setEditForm({...editForm, monto_total: e.target.value})} className="w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all p-3 rounded-xl font-bold text-lg text-[#0284c7]" />
+                        <input type="number" value={editForm.monto_total} onChange={e => setEditForm({...editForm, monto_total: parseFloat(e.target.value) || 0})} className="w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all p-3 rounded-xl font-bold text-lg text-[#0284c7]" />
                       </div>
+
+                      {/* Desglose Pago Mixto en Edición */}
+                      {editForm.origen_fondos === 'Fondos Mixtos' && (
+                        <div className="p-3 bg-amber-50/60 rounded-xl border border-amber-200 space-y-3">
+                          <span className="text-xs font-bold text-slate-700 uppercase">Desglose Pago Mixto</span>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-[11px] font-bold text-emerald-700 mb-1 uppercase">Monto Caja</label>
+                              <input 
+                                type="number" 
+                                value={editForm.monto_caja} 
+                                onChange={e => setEditForm({...editForm, monto_caja: parseFloat(e.target.value) || 0})}
+                                className="w-full bg-white border border-emerald-300 rounded-lg px-3 py-2 text-sm font-bold text-emerald-800"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-bold text-purple-700 mb-1 uppercase">Monto NC</label>
+                              <input 
+                                type="number" 
+                                value={editForm.monto_nc} 
+                                onChange={e => setEditForm({...editForm, monto_nc: parseFloat(e.target.value) || 0})}
+                                className="w-full bg-white border border-purple-300 rounded-lg px-3 py-2 text-sm font-bold text-purple-800"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
                       <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Estado</label>
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Estado</label>
+                          {!isAdmin && <span className="text-[10px] text-amber-600 font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">Solo Lectura (Admin/Finanzas)</span>}
+                        </div>
                         <select 
                           value={editForm.estado} 
                           onChange={e => setEditForm({...editForm, estado: e.target.value})} 
-                          disabled={activeTab !== 'admin'}
-                          className={`w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all p-3 rounded-xl font-bold ${activeTab !== 'admin' ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : ''}`}
+                          disabled={!isAdmin}
+                          className={`w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all p-3 rounded-xl font-bold ${!isAdmin ? 'bg-slate-100 text-slate-400 cursor-not-allowed border-slate-200' : 'text-slate-800'}`}
                         >
                           <option value="Pendiente de Revisión">Pendiente de Revisión</option>
-                          <option value="Aprobada">Aprobada</option>
                           <option value="Aprobado">Aprobado</option>
-                          <option value="Rechazada">Rechazada</option>
                           <option value="Rechazado">Rechazado</option>
+                          <option value="Anulado">Anulado</option>
                         </select>
                       </div>
                       <div className="pt-6 flex gap-3">
                         <button onClick={handleEditSubmit} className="bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition-colors shadow-sm font-bold tracking-wide flex-1 py-3.5 rounded-xl text-lg flex justify-center items-center gap-2">
                           Guardar Cambios
                         </button>
-                        {activeTab === 'admin' && (
+                        {isAdmin && (
                           <button 
                             onClick={() => {
-                              if (window.confirm("¿Estás seguro de anular/rechazar este gasto?")) {
-                                setEditForm({...editForm, estado: 'Rechazado'});
-                                // Opcional: handleEditSubmit directly or wait for them to save
+                              if (window.confirm("¿Estás seguro de anular esta transacción?")) {
+                                setEditForm({...editForm, estado: 'Anulado'});
                               }
                             }} 
-                            className="bg-rose-100 hover:bg-rose-200 text-rose-600 rounded-lg transition-colors font-bold tracking-wide px-4 py-3.5 rounded-xl flex justify-center items-center gap-2"
+                            className="bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg transition-colors font-bold tracking-wide px-4 py-3.5 rounded-xl flex justify-center items-center gap-2"
                             title="Anular Gasto"
                           >
-                            <X className="h-5 w-5" />
+                            <Ban className="h-5 w-5" />
                           </button>
                         )}
                       </div>
