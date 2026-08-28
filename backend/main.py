@@ -383,6 +383,30 @@ async def save_receipt(data: SaveExpenseRequest, background_tasks: BackgroundTas
     try:
         fecha_captura = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
+        # Validar y normalizar Ledger Segregado (Bolsas contables)
+        final_origen = data.origen_fondos or "Caja Principal"
+        final_monto_caja = float(data.monto_caja or 0)
+        final_monto_nc = float(data.monto_nc or 0)
+        final_monto_total = float(data.monto_total or 0)
+
+        if final_origen == "Fondos Mixtos":
+            if abs((final_monto_caja + final_monto_nc) - final_monto_total) > 0.01:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"La suma de Monto Caja (${final_monto_caja:,.0f}) y Monto NC (${final_monto_nc:,.0f}) debe coincidir exactamente con el Monto Total (${final_monto_total:,.0f})"
+                )
+        elif final_origen == "Casa Comercial":
+            final_monto_caja = 0.0
+            final_monto_nc = final_monto_total
+        elif data.tipo_transaccion == "Sin Respaldo" or final_origen == "Cuentas por Recuperar":
+            final_origen = "Cuentas por Recuperar"
+            final_monto_caja = final_monto_total
+            final_monto_nc = 0.0
+        else:
+            final_origen = "Caja Principal"
+            final_monto_caja = final_monto_total
+            final_monto_nc = 0.0
+
         # Guardar en Supabase (CRM)
         supabase_data = {
             "id": data.id,
@@ -392,16 +416,16 @@ async def save_receipt(data: SaveExpenseRequest, background_tasks: BackgroundTas
             "centro_costo": data.centro_costo,
             "rut_proveedor": data.rut_proveedor,
             "fecha_boleta": data.fecha_boleta if data.fecha_boleta else None,
-            "monto_total": data.monto_total,
+            "monto_total": final_monto_total,
             "iva": data.iva,
             "link_drive": data.link_drive,
             "fecha_captura": fecha_captura,
             "tipo_transaccion": data.tipo_transaccion,
-            "origen_fondos": data.origen_fondos,
-            "monto_caja": data.monto_caja,
-            "monto_nc": data.monto_nc,
+            "origen_fondos": final_origen,
+            "monto_caja": final_monto_caja,
+            "monto_nc": final_monto_nc,
             "clasificacion_sin_respaldo": data.clasificacion_sin_respaldo,
-            "estado": data.estado,
+            "estado": data.estado or "Pendiente de Revisión",
             "factura_asociada": data.factura_asociada,
             "comentarios_revisor": data.comentarios_revisor,
             "descripcion": data.descripcion
@@ -412,6 +436,8 @@ async def save_receipt(data: SaveExpenseRequest, background_tasks: BackgroundTas
         background_tasks.add_task(send_notification_email, supabase_data)
         
         return {"success": True, "data": supabase_data}
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error guardando recibo: {str(e)}")
         return {"success": False, "error": "Error interno al guardar el recibo"}
@@ -449,7 +475,6 @@ async def get_capital(email: str):
 @app.get("/admin/history")
 async def admin_history(request: Request, email: str):
     # Verificar que el email venga del header X-User-Email además del query param
-    # Esto agrega una capa extra de verificación contra requests directas
     header_email = request.headers.get("X-User-Email", "").lower()
     query_email = email.lower()
     if header_email != query_email or query_email not in ADMIN_EMAILS:
@@ -463,30 +488,46 @@ async def admin_history(request: Request, email: str):
         return {"success": False, "error": "Error interno al obtener historial admin"}
 
 @app.post("/update-expense-status")
-async def update_expense_status(data: UpdateStatusRequest):
+async def update_expense_status(data: UpdateStatusRequest, request: Request):
     try:
+        # Verificar permisos de administrador para cambios de estado
+        header_email = request.headers.get("X-User-Email", "").lower()
+        if header_email and header_email not in ADMIN_EMAILS:
+            raise HTTPException(status_code=403, detail="Solo administradores pueden cambiar el estado de una rendición")
+
         response = supabase.table("transacciones").update({
             "estado": data.estado,
             "comentarios_revisor": data.comentarios_revisor
         }).eq("id", data.id).execute()
         return {"success": True, "data": response.data}
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error updating status: {str(e)}")
         return {"success": False, "error": "Error interno al actualizar estado"}
 
 @app.delete("/expense/{expense_id}")
-async def delete_expense(expense_id: str):
+async def delete_expense(expense_id: str, request: Request):
     try:
+        header_email = request.headers.get("X-User-Email", "").lower()
+        if header_email and header_email not in ADMIN_EMAILS:
+            raise HTTPException(status_code=403, detail="Solo administradores pueden eliminar registros")
+
         # 1. Eliminar en Supabase
         supabase.table("transacciones").delete().eq("id", expense_id).execute()
         return {"success": True}
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error eliminando gasto: {str(e)}")
         return {"success": False, "error": "Error interno al eliminar el gasto"}
 
 @app.put("/expense/{expense_id}")
-async def edit_expense(expense_id: str, data: EditExpenseRequest):
+async def edit_expense(expense_id: str, data: EditExpenseRequest, request: Request):
     try:
+        header_email = request.headers.get("X-User-Email", "").lower()
+        is_admin = header_email in ADMIN_EMAILS
+
         # Obtener gasto original de Supabase
         response = supabase.table("transacciones").select("*").eq("id", expense_id).execute()
         if not response.data:
@@ -495,9 +536,38 @@ async def edit_expense(expense_id: str, data: EditExpenseRequest):
         old_expense = response.data[0]
         
         # Calcular nuevo IVA (desde el Monto Total Bruto)
-        nuevo_monto = data.monto_total
+        nuevo_monto = float(data.monto_total)
         nuevo_iva = round((nuevo_monto * 19) / 119)
         
+        # Validar y normalizar Ledger Segregado
+        final_origen = data.origen_fondos or old_expense.get("origen_fondos", "Caja Principal")
+        final_monto_caja = float(data.monto_caja or 0)
+        final_monto_nc = float(data.monto_nc or 0)
+
+        if final_origen == "Fondos Mixtos":
+            if abs((final_monto_caja + final_monto_nc) - nuevo_monto) > 0.01:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"La suma de Monto Caja (${final_monto_caja:,.0f}) y Monto NC (${final_monto_nc:,.0f}) debe coincidir con el Monto Total (${nuevo_monto:,.0f})"
+                )
+        elif final_origen == "Casa Comercial":
+            final_monto_caja = 0.0
+            final_monto_nc = nuevo_monto
+        elif data.tipo_transaccion == "Sin Respaldo" or final_origen == "Cuentas por Recuperar":
+            final_origen = "Cuentas por Recuperar"
+            final_monto_caja = nuevo_monto
+            final_monto_nc = 0.0
+        else:
+            final_origen = "Caja Principal"
+            final_monto_caja = nuevo_monto
+            final_monto_nc = 0.0
+
+        # Protección RBAC: Si el usuario no es admin, no puede cambiar el estado existente
+        if is_admin and data.estado:
+            final_estado = data.estado
+        else:
+            final_estado = old_expense.get("estado", "Pendiente de Revisión")
+
         # Actualizar Supabase
         update_data = {
             "departamento": data.departamento,
@@ -507,11 +577,11 @@ async def edit_expense(expense_id: str, data: EditExpenseRequest):
             "monto_total": nuevo_monto,
             "iva": nuevo_iva,
             "tipo_transaccion": data.tipo_transaccion,
-            "origen_fondos": data.origen_fondos,
-            "monto_caja": data.monto_caja,
-            "monto_nc": data.monto_nc,
+            "origen_fondos": final_origen,
+            "monto_caja": final_monto_caja,
+            "monto_nc": final_monto_nc,
             "clasificacion_sin_respaldo": data.clasificacion_sin_respaldo,
-            "estado": data.estado,
+            "estado": final_estado,
             "factura_asociada": data.factura_asociada,
             "comentarios_revisor": data.comentarios_revisor,
             "descripcion": data.descripcion
