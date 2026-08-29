@@ -149,6 +149,7 @@ class EditExpensePayload(BaseModel):
     rut_proveedor: Optional[str] = None
     fecha_boleta: Optional[str] = None
     monto_total: float
+    link_drive: Optional[str] = None
     tipo_transaccion: Optional[str] = "Boleta"
     origen_fondos: Optional[str] = "Caja Principal"
     monto_caja: Optional[float] = 0.0
@@ -517,6 +518,7 @@ async def edit_expense(expense_id: str, data: EditExpensePayload, request: Reque
             "fecha_boleta": data.fecha_boleta if data.fecha_boleta else None,
             "monto_total": nuevo_monto,
             "iva": nuevo_iva,
+            "link_drive": data.link_drive if data.link_drive is not None else old_expense.get("link_drive"),
             "tipo_transaccion": data.tipo_transaccion,
             "origen_fondos": final_origen,
             "monto_caja": final_monto_caja,
