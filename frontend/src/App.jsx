@@ -237,6 +237,8 @@ function App() {
   // Edit States
   const [editingExpense, setEditingExpense] = useState(null);
   const [editForm, setEditForm] = useState({});
+  const [editFile, setEditFile] = useState(null);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   // Custom UI Dialog
   const [dialog, setDialog] = useState({ isOpen: false, type: 'info', title: '', message: '', onConfirm: null });
@@ -501,12 +503,14 @@ function App() {
 
   const startEdit = (exp) => {
     setEditingExpense(exp);
+    setEditFile(null);
     setEditForm({
       departamento: exp.departamento,
       centro_costo: exp.centro_costo,
       rut_proveedor: exp.rut_proveedor,
       fecha_boleta: exp.fecha_boleta,
       monto_total: exp.monto_total,
+      link_drive: exp.link_drive || '',
       tipo_transaccion: exp.tipo_transaccion || 'Boleta',
       origen_fondos: exp.origen_fondos || 'Caja Principal',
       monto_caja: exp.monto_caja || 0,
@@ -520,17 +524,50 @@ function App() {
   };
 
   const handleEditSubmit = async () => {
+    setIsUpdating(true);
     try {
+      let finalLinkDrive = editForm.link_drive;
+
+      if (editFile) {
+        const formData = new FormData();
+        formData.append('file', editFile);
+        formData.append('userName', user.name);
+        formData.append('userEmail', user.email);
+        formData.append('department', editForm.departamento);
+        formData.append('costCenter', editForm.centro_costo);
+        formData.append('skip_ocr', 'true');
+
+        const uploadRes = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/upload-receipt`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        if (uploadRes.data.success && uploadRes.data.data.link_drive) {
+          finalLinkDrive = uploadRes.data.data.link_drive;
+        } else {
+          showError("Error al subir archivo", uploadRes.data.error || "No se pudo subir el comprobante a Google Drive.");
+          setIsUpdating(false);
+          return;
+        }
+      }
+
+      const payload = {
+        ...editForm,
+        link_drive: finalLinkDrive
+      };
+
       await axios.put(
         `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/expense/${editingExpense.id}`, 
-        editForm,
+        payload,
         { headers: { 'X-User-Email': user?.email || '' } }
       );
       setEditingExpense(null);
+      setEditFile(null);
       fetchHistory();
+      showSuccess("Gasto Actualizado", "El registro y su documento de respaldo han sido actualizados correctamente.");
     } catch (err) {
       console.error("Error updating", err);
       showError("Error", err.response?.data?.detail || "Error al actualizar el gasto");
+    } finally {
+      setIsUpdating(false);
     }
   };
 
@@ -1907,9 +1944,59 @@ function App() {
                           <option value="Anulado">Anulado</option>
                         </select>
                       </div>
+
+                      {/* Documento de Respaldo Section */}
+                      <div className="pt-3 border-t border-slate-100 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
+                            Documento de Respaldo
+                          </label>
+                          {editingExpense.link_drive ? (
+                            <a 
+                              href={editingExpense.link_drive} 
+                              target="_blank" 
+                              rel="noreferrer" 
+                              className="text-xs font-bold text-sky-600 hover:text-sky-700 underline flex items-center gap-1"
+                            >
+                              <FileText className="h-3.5 w-3.5" /> Ver actual
+                            </a>
+                          ) : (
+                            <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                              Sin documento previo
+                            </span>
+                          )}
+                        </div>
+
+                        <input 
+                          type="file" 
+                          accept="image/*,application/pdf"
+                          onChange={(e) => {
+                            if (e.target.files && e.target.files[0]) {
+                              setEditFile(e.target.files[0]);
+                            } else {
+                              setEditFile(null);
+                            }
+                          }}
+                          className="w-full text-xs text-slate-500 file:mr-3 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-sky-50 file:text-sky-700 hover:file:bg-sky-100 transition-colors cursor-pointer border border-slate-200 rounded-xl p-1 bg-slate-50/50"
+                        />
+                        {editFile && (
+                          <p className="text-xs text-emerald-600 font-bold flex items-center gap-1">
+                            <CheckCircle className="h-4 w-4 shrink-0" /> Archivo listo para subir: {editFile.name}
+                          </p>
+                        )}
+                      </div>
+
                       <div className="pt-6 flex gap-3">
-                        <button onClick={handleEditSubmit} className="bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition-colors shadow-sm font-bold tracking-wide flex-1 py-3.5 rounded-xl text-lg flex justify-center items-center gap-2">
-                          Guardar Cambios
+                        <button 
+                          onClick={handleEditSubmit} 
+                          disabled={isUpdating}
+                          className={`bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition-colors shadow-sm font-bold tracking-wide flex-1 py-3.5 rounded-xl text-lg flex justify-center items-center gap-2 ${isUpdating ? 'opacity-70 cursor-not-allowed' : ''}`}
+                        >
+                          {isUpdating ? (
+                            <><RefreshCcw className="h-5 w-5 animate-spin" /> Subiendo y Guardando...</>
+                          ) : (
+                            'Guardar Cambios'
+                          )}
                         </button>
                         {isApprover && (
                           <button 
