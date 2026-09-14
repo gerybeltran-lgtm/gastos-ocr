@@ -253,7 +253,7 @@ async def upload_receipt(
                         os.remove(image_to_process)
             
             # Formatear fecha
-            fecha_boleta = extracted_data.get("fecha")
+            fecha_boleta = extracted_data.get("fecha_boleta") or extracted_data.get("fecha")
             if fecha_boleta:
                 try:
                     if "/" in fecha_boleta:
@@ -272,16 +272,24 @@ async def upload_receipt(
                     print("Error formateando fecha:", e)
 
             # Estructurar respuesta para la revisión
+            rut_prov = extracted_data.get("rut_proveedor") or extracted_data.get("rut") or ""
+            rut_rec = extracted_data.get("rut_receptor") or ""
+            es_ev = extracted_data.get("es_e_voltage", False)
+            total_monto = extracted_data.get("monto_total") or extracted_data.get("total") or 0
+            iva_val = extracted_data.get("iva") or (round((total_monto * 19) / 119) if total_monto else 0)
+
             response_data = {
                 "id": transaccion_id,
                 "usuario_nombre": userName,
                 "usuario_email": userEmail,
                 "departamento": department,
                 "centro_costo": costCenter,
-                "rut_proveedor": extracted_data.get("rut"),
+                "rut_proveedor": rut_prov,
+                "rut_receptor": rut_rec,
+                "es_e_voltage": es_ev,
                 "fecha_boleta": fecha_boleta,
-                "monto_total": extracted_data.get("total", 0),
-                "iva": extracted_data.get("iva", 0),
+                "monto_total": total_monto,
+                "iva": iva_val,
                 "link_drive": link_drive
             }
             
