@@ -124,51 +124,128 @@ def extract_text_from_image(image_path: str) -> str:
         raise e
 
 
+EVOLTAGE_RUT_CLEAN = "771700632"
+EVOLTAGE_RUT_FORMATTED = "77.170.063-2"
+
+def clean_rut(rut_str: str) -> str:
+    if not rut_str:
+        return ""
+    return re.sub(r'[^0-9kK]', '', rut_str).upper()
+
+def format_rut(rut_str: str) -> str:
+    clean = clean_rut(rut_str)
+    if len(clean) < 2:
+        return rut_str.strip().upper()
+    body, dv = clean[:-1], clean[-1]
+    parts = []
+    while len(body) > 3:
+        parts.insert(0, body[-3:])
+        body = body[:-3]
+    parts.insert(0, body)
+    return '.'.join(parts) + '-' + dv
+
 def parse_receipt_data(text: str) -> dict:
     """
-    Utiliza expresiones regulares (Regex) para extraer RUT, Fecha y Monto Total.
+    Analiza el texto extraído por OCR y estructura los datos contables:
+    - RUT Proveedor (vendedor)
+    - RUT Receptor (verifica si es E-Voltage SpA: 77.170.063-2)
+    - Fecha
+    - Monto Total, Neto e IVA
     """
     datos = {
         "rut_proveedor": None,
+        "rut": None,
+        "rut_receptor": None,
+        "es_e_voltage": False,
         "fecha": None,
-        "monto_total": None
+        "fecha_boleta": None,
+        "monto_total": 0,
+        "total": 0,
+        "iva": 0,
+        "neto": 0
     }
 
-    # 1. Extraer RUT chileno
-    rut_pattern = r'\b\d{1,2}\.?\d{3}\.?\d{3}-[\dkK]\b'
-    rut_match = re.search(rut_pattern, text)
-    if rut_match:
-        datos["rut_proveedor"] = rut_match.group(0).upper()
+    if not text:
+        return datos
 
-    # 2. Extraer Fecha
-    fecha_pattern = r'\b(0[1-9]|[12][0-9]|3[01])[-/](0[1-9]|1[012])[-/](20\d\d)\b'
-    fecha_match = re.search(fecha_pattern, text)
-    if fecha_match:
-        # Convertir a YYYY-MM-DD para compatibilidad con HTML input type="date" y PostgreSQL
-        day = fecha_match.group(1)
-        month = fecha_match.group(2)
-        year = fecha_match.group(3)
-        datos["fecha"] = f"{year}-{month}-{day}"
+    # 1. Extracción y Clasificación de RUTs
+    rut_pattern = r'\b(\d{1,2}(?:\.?\d{3}){2}-[\dkK]|\d{7,8}-[\dkK])\b'
+    found_ruts = re.findall(rut_pattern, text, re.IGNORECASE)
 
-    # 3. Extraer Monto Total
-    # Estrategia 1: Buscar TOTAL explícito (ignorando SUB-TOTAL) en la misma línea
-    monto_pattern = r'(?i)(?<!SUB)(?<!SUB-)TOTAL[^\n\d]*\$?\s*([\d\.]+)'
-    montos_encontrados = re.findall(monto_pattern, text)
+    vendor_ruts = []
+    for r in found_ruts:
+        formatted = format_rut(r)
+        clean = clean_rut(r)
+        if clean == EVOLTAGE_RUT_CLEAN:
+            datos["rut_receptor"] = EVOLTAGE_RUT_FORMATTED
+            datos["es_e_voltage"] = True
+        else:
+            if formatted not in vendor_ruts:
+                vendor_ruts.append(formatted)
+
+    if vendor_ruts:
+        datos["rut_proveedor"] = vendor_ruts[0]
+        datos["rut"] = vendor_ruts[0]
+    elif found_ruts and not datos["es_e_voltage"]:
+        formatted_single = format_rut(found_ruts[0])
+        datos["rut_proveedor"] = formatted_single
+        datos["rut"] = formatted_single
+
+    # 2. Extracción de Fecha
+    fecha_pattern1 = r'\b(0?[1-9]|[12][0-9]|3[01])[-/.](0?[1-9]|1[012])[-/.](20\d\d)\b'
+    f_match1 = re.search(fecha_pattern1, text)
+    if f_match1:
+        d = f_match1.group(1).zfill(2)
+        m = f_match1.group(2).zfill(2)
+        y = f_match1.group(3)
+        datos["fecha"] = f"{y}-{m}-{d}"
+        datos["fecha_boleta"] = f"{y}-{m}-{d}"
+    else:
+        fecha_pattern2 = r'\b(20\d\d)[-/.](0?[1-9]|1[012])[-/.](0?[1-9]|[12][0-9]|3[01])\b'
+        f_match2 = re.search(fecha_pattern2, text)
+        if f_match2:
+            y = f_match2.group(1)
+            m = f_match2.group(2).zfill(2)
+            d = f_match2.group(3).zfill(2)
+            datos["fecha"] = f"{y}-{m}-{d}"
+            datos["fecha_boleta"] = f"{y}-{m}-{d}"
+
+    # 3. Extracción de Monto Total
+    total_patterns = [
+        r'(?i)(?:TOTAL\s*A\s*PAGAR|MONTO\s*TOTAL|TOTAL\s*PAGAR)[^\d\n]*\$?\s*([\d\.]+)',
+        r'(?i)(?<!SUB)(?<!SUB-)TOTAL[^\d\n]*\$?\s*([\d\.]+)',
+        r'(?i)\bTOTAL\b\s+([\d\.]+)'
+    ]
     
-    # Estrategia 2: Si no encuentra TOTAL válido, tomar el último monto con signo $ del documento
-    if not montos_encontrados:
-        montos_encontrados = re.findall(r'\$\s*([\d\.]+)', text)
-        
-    if montos_encontrados:
-        valores_validos = []
-        for m in montos_encontrados:
-            val_str = m.replace('.', '').strip()
-            if val_str.isdigit():
-                valores_validos.append(int(val_str))
-        
-        if valores_validos:
-            # Para boletas chilenas, si hay varios montos (como el IVA al final), el Total suele ser el mayor.
-            datos["monto_total"] = max(valores_validos)
+    total_val = None
+    for pat in total_patterns:
+        matches = re.findall(pat, text)
+        if matches:
+            for m in matches:
+                clean_num = m.replace('.', '').strip()
+                if clean_num.isdigit():
+                    v = int(clean_num)
+                    if v > 100:
+                        total_val = v
+                        break
+        if total_val:
+            break
+
+    if not total_val:
+        dollar_matches = re.findall(r'\$\s*([\d\.]+)', text)
+        cands = []
+        for m in dollar_matches:
+            clean_num = m.replace('.', '').strip()
+            if clean_num.isdigit():
+                cands.append(int(clean_num))
+        if cands:
+            total_val = max(cands)
+
+    if total_val:
+        datos["monto_total"] = total_val
+        datos["total"] = total_val
+        datos["iva"] = round((total_val * 19) / 119)
+        datos["neto"] = total_val - datos["iva"]
 
     return datos
 
@@ -188,8 +265,11 @@ if __name__ == "__main__":
         
         print("\n--- RESULTADO FINAL ---")
         print(f"RUT Proveedor: {datos_estructurados['rut_proveedor']}")
+        print(f"RUT Receptor: {datos_estructurados['rut_receptor']}")
+        print(f"Es E-Voltage: {datos_estructurados['es_e_voltage']}")
         print(f"Fecha: {datos_estructurados['fecha']}")
         print(f"Monto Total: ${datos_estructurados['monto_total']}")
+        print(f"IVA: ${datos_estructurados['iva']}")
         
     except Exception as e:
         print(f"Ocurrió un error en el flujo: {str(e)}")
