@@ -1033,8 +1033,16 @@ function App() {
                     <div className="space-y-5">
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-xs font-bold text-slate-500 mb-1 uppercase">RUT Proveedor</label>
-                          <input type="text" value={reviewData.rut_proveedor} onChange={(e) => setReviewData({...reviewData, rut_proveedor: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="Opcional" />
+                          <label className="block text-xs font-bold text-slate-500 mb-1 uppercase">
+                            RUT Proveedor {transactionType === 'Factura' ? <span className="text-rose-500 font-bold">*</span> : <span className="text-slate-400 font-normal lowercase">(opcional)</span>}
+                          </label>
+                          <input 
+                            type="text" 
+                            value={reviewData.rut_proveedor} 
+                            onChange={(e) => setReviewData({...reviewData, rut_proveedor: e.target.value})} 
+                            className={`w-full bg-slate-50 border ${transactionType === 'Factura' && !reviewData.rut_proveedor?.trim() ? 'border-amber-400 focus:border-rose-500' : 'border-slate-200'} rounded-lg px-3 py-2 text-sm font-semibold`} 
+                            placeholder={transactionType === 'Factura' ? "Obligatorio (Ej: 76.882.560-4)" : "Opcional"} 
+                          />
                         </div>
                         {transactionType !== 'Nota de Crédito' && (
                           <div>
@@ -1049,6 +1057,24 @@ function App() {
                           </div>
                         )}
                       </div>
+
+                      {transactionType === 'Factura' && (
+                        <div className="mt-2">
+                          {reviewData.es_e_voltage ? (
+                            <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2 text-emerald-800 text-xs font-bold">
+                              <CheckCircle className="h-4 w-4 text-emerald-600 shrink-0" />
+                              <span>Factura emitida a E-Voltage SpA (RUT: 77.170.063-2)</span>
+                            </div>
+                          ) : (
+                            <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2 text-amber-800 text-xs font-medium">
+                              <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                              <div>
+                                <span className="font-bold">Verificación de Receptor:</span> No se detectó automáticamente el RUT de E-Voltage (77.170.063-2). Asegúrate de que la factura esté a nombre de E-Voltage SpA.
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                       
                       <div className="grid grid-cols-2 gap-4">
                         <div>
@@ -1185,6 +1211,7 @@ function App() {
                       onClick={handleSaveReceipt}
                       disabled={
                         isSaving || 
+                        (transactionType === 'Factura' && !reviewData.rut_proveedor?.trim()) ||
                         (transactionType === 'Nota de Crédito' && !facturaAsociada.trim()) || 
                         (transactionType === 'Sin Respaldo' && (!clasificacionSinRespaldo || !descripcion.trim())) ||
                         (origenFondos === 'Fondos Mixtos' && (
@@ -1194,6 +1221,7 @@ function App() {
                       }
                       className={`mt-8 w-full py-4 rounded-xl font-bold flex items-center justify-center gap-3 text-lg ${
                         isSaving || 
+                        (transactionType === 'Factura' && !reviewData.rut_proveedor?.trim()) ||
                         (transactionType === 'Nota de Crédito' && !facturaAsociada.trim()) || 
                         (transactionType === 'Sin Respaldo' && (!clasificacionSinRespaldo || !descripcion.trim())) ||
                         (origenFondos === 'Fondos Mixtos' && (
@@ -1210,6 +1238,11 @@ function App() {
                         <><CheckCircle className="h-6 w-6" /> Aprobar y Guardar</>
                       )}
                     </button>
+                    {transactionType === 'Factura' && !reviewData.rut_proveedor?.trim() && (
+                      <p className="text-xs text-rose-500 font-bold text-center mt-2 flex items-center justify-center gap-1">
+                        <AlertCircle className="h-3.5 w-3.5" /> En Facturas, el RUT del Proveedor es obligatorio.
+                      </p>
+                    )}
                     {error && <div className="mt-4 text-red-500 text-sm font-medium text-center">{error}</div>}
                     <button onClick={resetForm} className="w-full mt-4 py-2 text-slate-400 hover:text-slate-600 text-sm font-medium transition-colors">
                       Cancelar
