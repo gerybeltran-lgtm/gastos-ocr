@@ -212,9 +212,9 @@ def parse_receipt_data(text: str) -> dict:
 
     # 3. Extracción de Monto Total
     total_patterns = [
-        r'(?i)(?:TOTAL\s*A\s*PAGAR|MONTO\s*TOTAL|TOTAL\s*PAGAR)[^\d\n]*\$?\s*([\d\.]+)',
-        r'(?i)(?<!SUB)(?<!SUB-)TOTAL[^\d\n]*\$?\s*([\d\.]+)',
-        r'(?i)\bTOTAL\b\s+([\d\.]+)'
+        r'(?i)(?:TOTAL\s*A\s*PAGAR|MONTO\s*TOTAL|TOTAL\s*PAGAR)[^\d\n]*[\$]?\s*(\d[\d\.]*)',
+        r'(?i)(?<!SUB)(?<!SUB-)TOTAL[^\d\n]*[\$]?\s*(\d[\d\.]*)',
+        r'(?i)\bTOTAL\b\s+[\$]?\s*(\d[\d\.]*)'
     ]
     
     total_val = None
