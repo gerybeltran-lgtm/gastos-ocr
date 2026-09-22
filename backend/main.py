@@ -6,12 +6,13 @@ try:
 except ImportError:
     pass  # python-dotenv no instalado, se usarán variables del sistema
 
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException, BackgroundTasks, Request
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, BackgroundTasks, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
-import shutil
 import uuid
-from pydantic import BaseModel
+import tempfile
+from pathlib import Path
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from supabase import create_client, Client
 import fitz  # PyMuPDF
 
@@ -25,13 +26,19 @@ MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".pdf"}
 ALLOWED_MIME_TYPES = {"image/jpeg", "image/png", "application/pdf"}
 
-ADMIN_EMAILS = ["gerardo.beltran@e-voltage.cl", "jose.diaz@e-voltage.cl", "jorge.salas@e-voltage.cl"]
-APPROVER_EMAILS = ["gerardo.beltran@e-voltage.cl", "jose.diaz@e-voltage.cl"]
+from accounting import VALID_STATUSES, as_db_number, calculate_vat, normalize_ledger
+from security import (
+    ADMIN_EMAILS,
+    AuthenticatedUser,
+    current_user,
+    require_admin,
+    require_approver,
+)
 
 def send_notification_email(data: dict):
     sender_email = os.environ.get("SENDER_EMAIL", "notificacionesevoltage@gmail.com")
     app_password = os.environ.get("EMAIL_PASSWORD", "")
-    receiver_emails = ADMIN_EMAILS
+    receiver_emails = sorted(ADMIN_EMAILS)
 
     subject = f"Nueva Rendición: {data.get('tipo_transaccion', 'Desconocido')} de {data.get('usuario_nombre', 'Usuario')}"
     
@@ -69,47 +76,28 @@ def send_notification_email(data: dict):
     msg.attach(part)
     
     try:
-        server = smtplib.SMTP_SSL("smtp.gmail.com", 465)
-        server.login(sender_email, app_password)
-        server.sendmail(sender_email, receiver_emails, msg.as_string())
-        server.quit()
+        if not app_password:
+            return
+        with smtplib.SMTP("smtp.gmail.com", 587, timeout=15) as server:
+            server.starttls()
+            server.login(sender_email, app_password)
+            server.sendmail(sender_email, receiver_emails, msg.as_string())
         print("Correo enviado exitosamente a los administradores.")
     except Exception as e:
         print(f"Error enviando correo: {str(e)}")
 
-# Fin importaciones correo
-
-
 # Configurar credenciales de Google antes de importar el procesador
-import json
-
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 cred_path = os.path.join(BASE_DIR, 'credentials.json')
 
-# Si estamos en Render u otra nube, podemos pasar el JSON como string en una variable de entorno
-if os.environ.get("GOOGLE_CREDENTIALS_JSON"):
-    try:
-        creds_data = json.loads(os.environ.get("GOOGLE_CREDENTIALS_JSON"))
-        if "private_key" in creds_data:
-            creds_data["private_key"] = creds_data["private_key"].replace('\\n', '\n')
-        with open(cred_path, "w") as f:
-            json.dump(creds_data, f)
-    except Exception as e:
-        print("Error al escribir credentials.json:", e)
+# Nunca persistir secretos provenientes del entorno en el disco de la aplicación.
+if os.path.exists(cred_path):
+    os.environ.setdefault("GOOGLE_APPLICATION_CREDENTIALS", cred_path)
 
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = cred_path
-
-# Supabase CRM Config — leído desde variables de entorno con fallback permanente
-DEFAULT_SUPABASE_URL = "https://msfvsjrubvzhkxzqjlhw.supabase.co"
-DEFAULT_SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1zZnZzanJ1YnZ6aGt4enFqbGh3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NDE2NDQyNCwiZXhwIjoyMDc5NzQwNDI0fQ.8xsF4hvpb-Tcul7olI0xdAPXcI0P0SYDqLyrV1i01RU"
-
-SUPABASE_URL = os.environ.get("SUPABASE_URL") or DEFAULT_SUPABASE_URL
-_raw_key = os.environ.get("SUPABASE_KEY")
-# Si la clave viene vacía o es la clave obsoleta revocada, usar la clave permanente
-if not _raw_key or "1HM9jriyskYCDnuQNxNtQg" in _raw_key:
-    SUPABASE_KEY = DEFAULT_SERVICE_ROLE_KEY
-else:
-    SUPABASE_KEY = _raw_key
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "").strip()
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "").strip()
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise RuntimeError("Faltan SUPABASE_URL y/o SUPABASE_KEY")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -126,58 +114,97 @@ origins = [origin.strip() for origin in _allowed_origins_raw.split(",") if origi
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_origin_regex=r"https://.*\.vercel\.app",
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
-class SaveReceiptPayload(BaseModel):
+
+class StrictPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+class SaveReceiptPayload(StrictPayload):
     id: str
     usuario_nombre: str
     usuario_email: str
     departamento: str
     centro_costo: str
-    rut_proveedor: Optional[str] = ""
+    rut_proveedor: Optional[str] = None
     fecha_boleta: Optional[str] = None
-    monto_total: float
-    iva: float
-    link_drive: str
+    monto_total: float = Field(ge=0, le=1_000_000_000)
+    iva: float | None = None
+    link_drive: Optional[str] = None
     tipo_transaccion: Optional[str] = "Boleta"
     origen_fondos: Optional[str] = "Caja Principal"
-    monto_caja: float = 0
-    monto_nc: float = 0
+    monto_caja: Optional[float] = 0.0
+    monto_nc: Optional[float] = 0.0
     clasificacion_sin_respaldo: Optional[str] = None
     estado: Optional[str] = "Pendiente de Revisión"
-    factura_asociada: Optional[str] = ""
-    comentarios_revisor: Optional[str] = ""
-    descripcion: Optional[str] = ""
+    factura_asociada: Optional[str] = None
+    comentarios_revisor: Optional[str] = None
+    descripcion: Optional[str] = None
 
-class UpdateStatusPayload(BaseModel):
-    id: str
-    estado: str
-    comentarios_revisor: Optional[str] = ""
+    @model_validator(mode="after")
+    def validate_document_rules(self):
+        if self.tipo_transaccion == "Factura" and not self.rut_proveedor:
+            raise ValueError("rut_proveedor es obligatorio para Facturas")
+        if self.tipo_transaccion == "Nota de Crédito" and not self.factura_asociada:
+            raise ValueError("factura_asociada es obligatoria para Notas de Crédito")
+        return self
 
-class ExportSheetsPayload(BaseModel):
-    rows: List[List[str]]
-
-class EditExpenseRequest(BaseModel):
+class EditExpensePayload(StrictPayload):
     departamento: str
     centro_costo: str
-    rut_proveedor: Optional[str] = ""
+    rut_proveedor: Optional[str] = None
     fecha_boleta: Optional[str] = None
-    monto_total: float
+    monto_total: float = Field(ge=0, le=1_000_000_000)
+    link_drive: Optional[str] = None
     tipo_transaccion: Optional[str] = "Boleta"
     origen_fondos: Optional[str] = "Caja Principal"
-    monto_caja: float = 0
-    monto_nc: float = 0
+    monto_caja: Optional[float] = 0.0
+    monto_nc: Optional[float] = 0.0
     clasificacion_sin_respaldo: Optional[str] = None
     estado: Optional[str] = "Pendiente de Revisión"
-    factura_asociada: Optional[str] = ""
-    comentarios_revisor: Optional[str] = ""
-    descripcion: Optional[str] = ""
-    link_drive: Optional[str] = None
+    factura_asociada: Optional[str] = None
+    comentarios_revisor: Optional[str] = None
+    descripcion: Optional[str] = None
 
+    @model_validator(mode="after")
+    def validate_document_rules(self):
+        if self.tipo_transaccion == "Factura" and not self.rut_proveedor:
+            raise ValueError("rut_proveedor es obligatorio para Facturas")
+        if self.tipo_transaccion == "Nota de Crédito" and not self.factura_asociada:
+            raise ValueError("factura_asociada es obligatoria para Notas de Crédito")
+        if self.estado not in VALID_STATUSES:
+            raise ValueError("estado inválido")
+        return self
+
+class UpdateStatusPayload(StrictPayload):
+    id: str
+    estado: str
+    comentarios_revisor: Optional[str] = None
+
+    @field_validator("estado")
+    @classmethod
+    def validate_status(cls, value: str) -> str:
+        if value not in VALID_STATUSES:
+            raise ValueError("estado inválido")
+        return value
+
+class ExportPayload(StrictPayload):
+    rows: list[list[str | int | float | None]] = Field(max_length=10_000)
+
+
+def _has_valid_signature(path: Path, extension: str) -> bool:
+    with path.open("rb") as source:
+        header = source.read(12)
+    if extension in {".jpg", ".jpeg"}:
+        return header.startswith(b"\xff\xd8\xff")
+    if extension == ".png":
+        return header.startswith(b"\x89PNG\r\n\x1a\n")
+    if extension == ".pdf":
+        return header.startswith(b"%PDF-")
+    return False
 
 @app.post("/upload-receipt")
 async def upload_receipt(
@@ -186,7 +213,8 @@ async def upload_receipt(
     userEmail: str = Form(...),
     department: str = Form(...),
     costCenter: str = Form(...),
-    skip_ocr: str = Form("false")
+    skip_ocr: Optional[str] = Form(None),
+    user: AuthenticatedUser = Depends(current_user),
 ):
     try:
         filename = file.filename or ""
@@ -208,7 +236,8 @@ async def upload_receipt(
 
         # 3. Validación de tamaño (guardando en chunks para no saturar memoria)
         transaccion_id = str(uuid.uuid4())
-        file_location = f"temp_{transaccion_id}{ext}"
+        temp_dir = tempfile.TemporaryDirectory(prefix="dealflow_")
+        file_location = str(Path(temp_dir.name) / f"receipt{ext}")
         bytes_written = 0
 
         with open(file_location, "wb") as buffer:
@@ -219,16 +248,20 @@ async def upload_receipt(
                     if os.path.exists(file_location):
                         os.remove(file_location)
                     raise HTTPException(
-                        status_code=400,
+                        status_code=413,
                         detail=f"El archivo supera el tamaño máximo de {MAX_FILE_SIZE_MB}MB."
                     )
                 buffer.write(chunk)
 
+        if not _has_valid_signature(Path(file_location), ext):
+            temp_dir.cleanup()
+            raise HTTPException(status_code=400, detail="El contenido no coincide con el tipo de archivo declarado")
+
         try:
             # 1. Subir a Google Drive
             print(f"Subiendo a Google Drive: {file.filename}...")
-            link_drive = upload_image_to_drive(file_location, f"{transaccion_id}_{file.filename}")
-            print(f"Enlace de Drive: {link_drive}")
+            safe_original_name = Path(filename).name
+            link_drive = upload_image_to_drive(file_location, f"{transaccion_id}_{safe_original_name}")
             
             extracted_data = {}
             if skip_ocr == "true":
@@ -240,34 +273,48 @@ async def upload_receipt(
                     "iva": 0
                 }
             else:
-                # 2. Convertir PDF a imagen si corresponde
-                img_to_process = file_location
-                if ext == ".pdf":
-                    print("Convirtiendo PDF a imagen para OCR...")
-                    doc = fitz.open(file_location)
-                    page = doc.load_page(0)  # Primera página
-                    pix = page.get_pixmap(dpi=200)
-                    img_to_process = f"temp_{transaccion_id}_page0.png"
-                    pix.save(img_to_process)
-                    doc.close()
+                # 2. Procesar OCR
+                print("Procesando OCR...")
+                image_to_process = file_location
+                is_pdf = file_location.lower().endswith('.pdf')
 
-                # 3. Preprocesar y extraer datos con Vision API + Regex
-                print("Preprocesando imagen para OCR...")
-                optimized_path = preprocess_image(img_to_process)
-                print("Extrayendo texto con Google Cloud Vision...")
-                text = extract_text_from_image(optimized_path)
-                print("Analizando datos del comprobante...")
-                extracted_data = parse_receipt_data(text)
+                if is_pdf:
+                    print("Convirtiendo primera página de PDF a imagen...")
+                    image_to_process = str(Path(temp_dir.name) / "page0.png")
+                    with fitz.open(file_location) as pdf_doc:
+                        if pdf_doc.page_count < 1 or pdf_doc.page_count > 100:
+                            raise HTTPException(status_code=400, detail="PDF inválido")
+                        page = pdf_doc.load_page(0)
+                        pix = page.get_pixmap(dpi=150)
+                        pix.save(image_to_process)
 
-                # Limpieza de archivo intermedio si fue PDF convertido
-                if ext == ".pdf" and os.path.exists(img_to_process):
-                    os.remove(img_to_process)
-                if os.path.exists(optimized_path) and optimized_path != file_location:
-                    os.remove(optimized_path)
-
-            fecha_boleta = extracted_data.get("fecha_boleta") or extracted_data.get("fecha")
-            if not fecha_boleta:
-                fecha_boleta = datetime.now().strftime("%Y-%m-%d")
+                try:
+                    processed_img = preprocess_image(image_to_process, str(Path(temp_dir.name) / "optimized.jpg"))
+                    text = extract_text_from_image(processed_img)
+                    print(f"Texto detectado ({len(text)} caracteres): {text[:100]}...")
+                    extracted_data = parse_receipt_data(text)
+                finally:
+                    if is_pdf and os.path.exists(image_to_process):
+                        os.remove(image_to_process)
+            
+            # Formatear fecha
+            fecha_boleta = extracted_data.get("fecha")
+            if fecha_boleta:
+                try:
+                    if "/" in fecha_boleta:
+                        parts = fecha_boleta.split("/")
+                        if len(parts) == 3:
+                            if len(parts[0]) == 4:
+                                fecha_boleta = f"{parts[0]}-{parts[1].zfill(2)}-{parts[2].zfill(2)}"
+                            else:
+                                fecha_boleta = f"{parts[2]}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
+                    elif "-" in fecha_boleta:
+                        parts = fecha_boleta.split("-")
+                        if len(parts) == 3:
+                            if len(parts[0]) != 4:
+                                fecha_boleta = f"{parts[2]}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
+                except Exception as e:
+                    print("Error formateando fecha:", e)
 
             # Estructurar respuesta para la revisión
             rut_prov = extracted_data.get("rut_proveedor") or extracted_data.get("rut") or ""
@@ -278,8 +325,8 @@ async def upload_receipt(
 
             response_data = {
                 "id": transaccion_id,
-                "usuario_nombre": userName,
-                "usuario_email": userEmail,
+                "usuario_nombre": user.name,
+                "usuario_email": user.email,
                 "departamento": department,
                 "centro_costo": costCenter,
                 "rut_proveedor": rut_prov,
@@ -293,103 +340,117 @@ async def upload_receipt(
 
             return {
                 "success": True,
-                "message": "Archivo procesado exitosamente",
+                "message": "Boleta procesada exitosamente",
                 "data": response_data
             }
-
+            
         finally:
-            # Limpieza del archivo temporal original
-            if os.path.exists(file_location):
-                os.remove(file_location)
+            temp_dir.cleanup()
 
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error procesando comprobante: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
-
+        if "temp_dir" in locals():
+            temp_dir.cleanup()
+        import traceback
+        err_msg = str(e)
+        print(f"Error procesando boleta: {type(e).__name__}")
+        traceback.print_exc()
+        # Fallback estructurado en caso de error de OCR / API
+        return {
+            "success": False,
+            "error": "No fue posible procesar el comprobante",
+            "data": {
+                "id": str(uuid.uuid4()) if 'uuid' in locals() else "temp-id",
+                "usuario_nombre": user.name,
+                "usuario_email": user.email,
+                "departamento": department,
+                "centro_costo": costCenter,
+                "rut_proveedor": None,
+                "fecha_boleta": datetime.now().strftime("%Y-%m-%d"),
+                "monto_total": 0,
+                "iva": 0,
+                "link_drive": link_drive if 'link_drive' in locals() else None
+            }
+        }
 
 @app.post("/save-receipt")
-async def save_receipt(payload: SaveReceiptPayload, background_tasks: BackgroundTasks):
+async def save_receipt(
+    data: SaveReceiptPayload,
+    background_tasks: BackgroundTasks,
+    user: AuthenticatedUser = Depends(current_user),
+):
     try:
-        # Validación de Ledger Segregado (Bolsas contables)
-        # Regla: Si origen_fondos es Fondos Mixtos, la suma de caja + nc debe igualar monto_total
-        if payload.origen_fondos == "Fondos Mixtos":
-            suma_bolsas = (payload.monto_caja or 0) + (payload.monto_nc or 0)
-            if abs(suma_bolsas - payload.monto_total) > 1:  # Margen de $1 por redondeo
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"La suma de Monto Caja (${payload.monto_caja:,.0f}) y Monto NC (${payload.monto_nc:,.0f}) debe coincidir exactamente con el Monto Total (${payload.monto_total:,.0f})."
-                )
-        elif payload.origen_fondos == "Casa Comercial":
-            # Si se financió 100% con saldo NC/Casa comercial, no se resta de caja física
-            payload.monto_caja = 0
-            payload.monto_nc = payload.monto_total
-        elif payload.tipo_transaccion == "Sin Respaldo" or payload.origen_fondos == "Cuentas por Recuperar":
-            # Todo gasto sin respaldo va a la bolsa de Cuentas por Recuperar
-            payload.origen_fondos = "Cuentas por Recuperar"
-            payload.monto_caja = payload.monto_total
-            payload.monto_nc = 0
-        else:
-            # Por defecto: Caja Principal asume el monto completo
-            payload.monto_caja = payload.monto_total
-            payload.monto_nc = 0
-
         fecha_captura = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        fecha_boleta_val = payload.fecha_boleta if (payload.fecha_boleta and payload.fecha_boleta.strip()) else None
+        
+        # Validar y normalizar Ledger Segregado (Bolsas contables)
+        final_origen, final_monto_caja, final_monto_nc, final_monto_total = normalize_ledger(
+            data.monto_total, data.origen_fondos, data.tipo_transaccion, data.monto_caja, data.monto_nc
+        )
+        final_iva = calculate_vat(final_monto_total, data.tipo_transaccion)
 
         # Guardar en Supabase (CRM)
         supabase_data = {
-            "id": payload.id,
-            "usuario_nombre": payload.usuario_nombre,
-            "usuario_email": payload.usuario_email,
-            "departamento": payload.departamento,
-            "centro_costo": payload.centro_costo,
-            "rut_proveedor": payload.rut_proveedor,
-            "fecha_boleta": fecha_boleta_val,
-            "monto_total": payload.monto_total,
-            "iva": payload.iva,
-            "link_drive": payload.link_drive,
+            "id": data.id,
+            "usuario_nombre": user.name,
+            "usuario_email": user.email,
+            "departamento": data.departamento,
+            "centro_costo": data.centro_costo,
+            "rut_proveedor": data.rut_proveedor,
+            "fecha_boleta": data.fecha_boleta if data.fecha_boleta else None,
+            "monto_total": as_db_number(final_monto_total),
+            "iva": as_db_number(final_iva),
+            "link_drive": data.link_drive,
             "fecha_captura": fecha_captura,
-            "tipo_transaccion": payload.tipo_transaccion,
-            "origen_fondos": payload.origen_fondos,
-            "monto_caja": payload.monto_caja,
-            "monto_nc": payload.monto_nc,
-            "clasificacion_sin_respaldo": payload.clasificacion_sin_respaldo,
-            "estado": payload.estado,
-            "factura_asociada": payload.factura_asociada,
-            "comentarios_revisor": payload.comentarios_revisor,
-            "descripcion": payload.descripcion
+            "tipo_transaccion": data.tipo_transaccion,
+            "origen_fondos": final_origen,
+            "monto_caja": as_db_number(final_monto_caja),
+            "monto_nc": as_db_number(final_monto_nc),
+            "clasificacion_sin_respaldo": data.clasificacion_sin_respaldo,
+            "estado": "Pendiente de Revisión",
+            "factura_asociada": data.factura_asociada,
+            "comentarios_revisor": None,
+            "descripcion": data.descripcion
         }
-
         supabase.table("transacciones").insert(supabase_data).execute()
         
-        # Enviar notificación por correo en segundo plano
+        # Agregar el envío de correo como tarea en segundo plano
         background_tasks.add_task(send_notification_email, supabase_data)
-
+        
         return {"success": True, "data": supabase_data}
-
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error guardando rendición: {str(e)}")
-        return {"success": False, "error": "Error interno al guardar la rendición"}
+        print(f"Error guardando recibo: {str(e)}")
+        return {"success": False, "error": "Error interno al guardar el recibo"}
 
+@app.post("/export-sheets")
+async def export_sheets(data: ExportPayload, _: AuthenticatedUser = Depends(require_admin)):
+    try:
+        safe_rows = [
+            [("'" + cell) if isinstance(cell, str) and cell.startswith(("=", "+", "-", "@")) else cell for cell in row]
+            for row in data.rows
+        ]
+        overwrite_sheets(safe_rows)
+        return {"success": True}
+    except Exception as e:
+        print(f"Error exportando a Sheets: {str(e)}")
+        return {"success": False, "error": "Error interno al exportar a Sheets"}
 
 @app.get("/history")
-async def history(email: str):
+async def get_history(user: AuthenticatedUser = Depends(current_user)):
     try:
-        # Obtenemos historial directamente de Supabase (CRM)
-        response = supabase.table("transacciones").select("*").eq("usuario_email", email).order("fecha_captura", desc=True).execute()
+        # Obtenemos solo los gastos del usuario que consulta
+        response = supabase.table("transacciones").select("*").eq("usuario_email", user.email).order("fecha_captura", desc=True).execute()
         return {"success": True, "data": response.data}
     except Exception as e:
         print(f"Error obteniendo historial: {str(e)}")
         return {"success": False, "error": "Error interno al obtener historial"}
 
-@app.get("/capital/{email}")
-async def get_capital(email: str):
+@app.get("/capital")
+async def get_capital(user: AuthenticatedUser = Depends(current_user)):
     try:
-        response = supabase.table("capital_entregado").select("monto_asignado").eq("email_usuario", email).execute()
+        response = supabase.table("capital_entregado").select("monto_asignado").eq("email_usuario", user.email).execute()
         if response.data and len(response.data) > 0:
             return {"success": True, "monto_asignado": response.data[0]["monto_asignado"]}
         return {"success": True, "monto_asignado": 0}
@@ -399,12 +460,7 @@ async def get_capital(email: str):
 
 
 @app.get("/admin/history")
-async def admin_history(request: Request, email: str):
-    # Verificar que el email venga del header X-User-Email además del query param
-    header_email = request.headers.get("X-User-Email", "").lower()
-    query_email = email.lower()
-    if header_email != query_email or query_email not in ADMIN_EMAILS:
-        raise HTTPException(status_code=403, detail="Acceso denegado")
+async def admin_history(_: AuthenticatedUser = Depends(require_admin)):
     try:
         # Obtenemos TODOS los gastos para el panel admin
         response = supabase.table("transacciones").select("*").order("fecha_captura", desc=True).execute()
@@ -413,131 +469,90 @@ async def admin_history(request: Request, email: str):
         print(f"Error obteniendo historial admin: {str(e)}")
         return {"success": False, "error": "Error interno al obtener historial admin"}
 
-
 @app.post("/update-expense-status")
-async def update_expense_status(payload: UpdateStatusPayload, request: Request):
-    # Validar que quien aprueba/rechaza sea Gerardo o José (Regla RBAC estricta)
-    header_email = request.headers.get("X-User-Email", "").lower()
-    if not header_email or header_email not in APPROVER_EMAILS:
-        raise HTTPException(
-            status_code=403, 
-            detail="Solo Gerencia/Finanzas (Gerardo y José) tienen autorización para aprobar o rechazar rendiciones."
-        )
-
+async def update_expense_status(data: UpdateStatusPayload, _: AuthenticatedUser = Depends(require_approver)):
     try:
         response = supabase.table("transacciones").update({
-            "estado": payload.estado,
-            "comentarios_revisor": payload.comentarios_revisor
-        }).eq("id", payload.id).execute()
+            "estado": data.estado,
+            "comentarios_revisor": data.comentarios_revisor
+        }).eq("id", data.id).execute()
         return {"success": True, "data": response.data}
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"Error actualizando estado: {str(e)}")
+        print(f"Error updating status: {str(e)}")
         return {"success": False, "error": "Error interno al actualizar estado"}
 
-
-@app.post("/export-sheets")
-async def export_sheets(payload: ExportSheetsPayload):
-    try:
-        overwrite_sheets(payload.rows)
-        return {"success": True, "message": "Datos sincronizados con Google Sheets"}
-    except Exception as e:
-        print(f"Error exportando a Sheets: {str(e)}")
-        return {"success": False, "error": "Error interno al exportar a Sheets"}
-
-
 @app.delete("/expense/{expense_id}")
-async def delete_expense(expense_id: str, request: Request):
-    # Validar permisos RBAC para eliminar registros
-    header_email = request.headers.get("X-User-Email", "").lower()
-    if not header_email or header_email not in APPROVER_EMAILS:
-        raise HTTPException(
-            status_code=403, 
-            detail="Solo Gerencia/Finanzas (Gerardo y José) pueden eliminar registros."
-        )
-
+async def delete_expense(expense_id: str, _: AuthenticatedUser = Depends(require_approver)):
     try:
         # 1. Eliminar en Supabase
         supabase.table("transacciones").delete().eq("id", expense_id).execute()
-        return {"success": True, "message": "Gasto eliminado correctamente"}
+        return {"success": True}
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error eliminando gasto: {str(e)}")
         return {"success": False, "error": "Error interno al eliminar el gasto"}
 
-
 @app.put("/expense/{expense_id}")
-async def edit_expense(expense_id: str, payload: EditExpenseRequest, request: Request):
-    header_email = request.headers.get("X-User-Email", "").lower()
-    is_approver = header_email in APPROVER_EMAILS
-
+async def edit_expense(
+    expense_id: str,
+    data: EditExpensePayload,
+    user: AuthenticatedUser = Depends(current_user),
+):
     try:
         # Obtener gasto original de Supabase
         response = supabase.table("transacciones").select("*").eq("id", expense_id).execute()
-        if not response.data or len(response.data) == 0:
+        if not response.data:
             raise HTTPException(status_code=404, detail="Gasto no encontrado")
-
+            
         old_expense = response.data[0]
-
-        # Validación y recálculo de montos
-        nuevo_monto = float(payload.monto_total)
-        nuevo_iva = round((nuevo_monto * 19) / 119)
-
-        final_origen = payload.origen_fondos or old_expense.get("origen_fondos", "Caja Principal")
-        final_monto_caja = float(payload.monto_caja or 0)
-        final_monto_nc = float(payload.monto_nc or 0)
-
-        if final_origen == "Fondos Mixtos":
-            if abs((final_monto_caja + final_monto_nc) - nuevo_monto) > 1:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"La suma de Monto Caja (${final_monto_caja:,.0f}) y Monto NC (${final_monto_nc:,.0f}) debe coincidir con el Monto Total (${nuevo_monto:,.0f})."
-                )
-        elif final_origen == "Casa Comercial":
-            final_monto_caja = 0
-            final_monto_nc = nuevo_monto
-        elif payload.tipo_transaccion == "Sin Respaldo" or final_origen == "Cuentas por Recuperar":
-            final_origen = "Cuentas por Recuperar"
-            final_monto_caja = nuevo_monto
-            final_monto_nc = 0
-        else:
-            final_origen = "Caja Principal"
-            final_monto_caja = nuevo_monto
-            final_monto_nc = 0
+        if not user.is_admin and old_expense.get("usuario_email", "").lower() != user.email:
+            raise HTTPException(status_code=403, detail="No puede editar rendiciones de otro usuario")
+        if not user.is_approver and old_expense.get("estado") not in {"Pendiente", "Pendiente de Revisión"}:
+            raise HTTPException(status_code=409, detail="Solo puede editar rendiciones pendientes")
+        
+        # Calcular nuevo IVA (desde el Monto Total Bruto)
+        final_origen, final_monto_caja, final_monto_nc, nuevo_monto = normalize_ledger(
+            data.monto_total, data.origen_fondos, data.tipo_transaccion, data.monto_caja, data.monto_nc
+        )
+        nuevo_iva = calculate_vat(nuevo_monto, data.tipo_transaccion)
 
         # Protección RBAC: Solo los aprobadores autorizados pueden cambiar el estado existente
-        if is_approver and payload.estado:
-            final_estado = payload.estado
+        if user.is_approver and data.estado:
+            final_estado = data.estado
         else:
             final_estado = old_expense.get("estado", "Pendiente de Revisión")
 
-        fecha_boleta_val = payload.fecha_boleta if (payload.fecha_boleta and payload.fecha_boleta.strip()) else None
-
         # Actualizar Supabase
         update_data = {
-            "departamento": payload.departamento,
-            "centro_costo": payload.centro_costo,
-            "rut_proveedor": payload.rut_proveedor,
-            "fecha_boleta": fecha_boleta_val,
-            "monto_total": nuevo_monto,
-            "iva": nuevo_iva,
-            "tipo_transaccion": payload.tipo_transaccion,
+            "departamento": data.departamento,
+            "centro_costo": data.centro_costo,
+            "rut_proveedor": data.rut_proveedor,
+            "fecha_boleta": data.fecha_boleta if data.fecha_boleta else None,
+            "monto_total": as_db_number(nuevo_monto),
+            "iva": as_db_number(nuevo_iva),
+            "link_drive": data.link_drive if data.link_drive is not None else old_expense.get("link_drive"),
+            "tipo_transaccion": data.tipo_transaccion,
             "origen_fondos": final_origen,
-            "monto_caja": final_monto_caja,
-            "monto_nc": final_monto_nc,
-            "clasificacion_sin_respaldo": payload.clasificacion_sin_respaldo,
+            "monto_caja": as_db_number(final_monto_caja),
+            "monto_nc": as_db_number(final_monto_nc),
+            "clasificacion_sin_respaldo": data.clasificacion_sin_respaldo,
             "estado": final_estado,
-            "factura_asociada": payload.factura_asociada,
-            "comentarios_revisor": payload.comentarios_revisor,
-            "descripcion": payload.descripcion
+            "factura_asociada": data.factura_asociada,
+            "comentarios_revisor": data.comentarios_revisor if user.is_approver else old_expense.get("comentarios_revisor"),
+            "descripcion": data.descripcion
         }
-        if payload.link_drive is not None:
-            update_data["link_drive"] = payload.link_drive
-
         supabase.table("transacciones").update(update_data).eq("id", expense_id).execute()
-
-        return {"success": True, "message": "Gasto actualizado exitosamente"}
-
+        
+        return {"success": True}
     except HTTPException:
         raise
     except Exception as e:
         print(f"Error editando gasto: {str(e)}")
         return {"success": False, "error": "Error interno al editar el gasto"}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

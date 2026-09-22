@@ -1,5 +1,6 @@
 import os
 import json
+import mimetypes
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
@@ -11,15 +12,16 @@ LOCAL_CREDENTIALS_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__))
 CREDENTIALS_FILE = RENDER_SECRET_FILE if os.path.exists(RENDER_SECRET_FILE) else LOCAL_CREDENTIALS_FILE
 
 GOOGLE_CREDENTIALS_JSON = os.environ.get("GOOGLE_CREDENTIALS_JSON", "")
-FOLDER_ID = os.environ.get("GOOGLE_DRIVE_FOLDER_ID", "1Bdg6Rzcj3tjuFbESEFAkLT4iV5kVRFij")
-SPREADSHEET_ID = os.environ.get("GOOGLE_SHEETS_ID", "13uq1ouzbLlc1efCPaaFpqIxVM_x4e8a93KyVdbEPwUo")
+FOLDER_ID = os.environ.get("GOOGLE_DRIVE_FOLDER_ID", "").strip()
+SPREADSHEET_ID = os.environ.get("GOOGLE_SHEETS_ID", "").strip()
+READER_DOMAIN = os.environ.get("GOOGLE_DRIVE_READER_DOMAIN", "e-voltage.cl").strip()
 
 if not FOLDER_ID or not SPREADSHEET_ID:
     import warnings
     warnings.warn("GOOGLE_DRIVE_FOLDER_ID o GOOGLE_SHEETS_ID no están configurados en las variables de entorno")
 
 SCOPES = [
-    'https://www.googleapis.com/auth/drive',
+    'https://www.googleapis.com/auth/drive.file',
     'https://www.googleapis.com/auth/spreadsheets'
 ]
 
@@ -60,7 +62,8 @@ def upload_image_to_drive(file_path, filename):
         'name': filename,
         'parents': [FOLDER_ID]
     }
-    media = MediaFileUpload(file_path, mimetype='image/jpeg', resumable=True)
+    mime_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    media = MediaFileUpload(file_path, mimetype=mime_type, resumable=True)
     
     file = drive_service.files().create(
         body=file_metadata,
@@ -69,15 +72,13 @@ def upload_image_to_drive(file_path, filename):
         supportsAllDrives=True
     ).execute()
     
-    # Otorgar permisos de lectura a cualquiera con el enlace para evitar pantalla "Solicitar Acceso"
-    try:
+    # Los respaldos financieros nunca deben quedar públicos en Internet.
+    if READER_DOMAIN:
         drive_service.permissions().create(
             fileId=file.get('id'),
-            body={'type': 'anyone', 'role': 'reader'},
+            body={'type': 'domain', 'role': 'reader', 'domain': READER_DOMAIN},
             supportsAllDrives=True
         ).execute()
-    except Exception as e:
-        print(f"Advertencia: No se pudo asignar permiso público de lectura a Drive: {e}")
 
     return file.get('webViewLink')
 

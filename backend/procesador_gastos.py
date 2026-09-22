@@ -8,6 +8,8 @@ import google.auth
 import google.auth.transport.requests
 import requests
 import base64
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 def preprocess_image(input_path: str, output_path: str = "optimized_receipt.jpg") -> str:
     """
@@ -106,11 +108,20 @@ def extract_text_from_image(image_path: str) -> str:
     }
     
     try:
-        response = requests.post(url, headers=headers, json=data)
+        retry = Retry(
+            total=3,
+            connect=3,
+            read=3,
+            backoff_factor=0.5,
+            status_forcelist=(429, 500, 502, 503, 504),
+            allowed_methods=frozenset({"POST"}),
+        )
+        with requests.Session() as session:
+            session.mount("https://", HTTPAdapter(max_retries=retry))
+            response = session.post(url, headers=headers, json=data, timeout=(5, 30))
         if response.status_code != 200:
             email = getattr(creds, 'service_account_email', 'unknown')
-            token_prefix = token[:10] if token else "None"
-            raise Exception(f"[{email}] Error en Vision API REST (Token:{token_prefix}): {response.status_code} {response.text}")
+            raise Exception(f"[{email}] Error en Vision API REST: HTTP {response.status_code}")
         
         resp_json = response.json()
         responses = resp_json.get("responses", [])

@@ -7,3 +7,12 @@ credentials.json
 frontend/dist
 temp_*.jpg
 opt_temp_*.jpg
+
+# Backend secrets
+backend/.env
+backend/__pycache__
+
+# Archivos de credenciales en texto plano (NUNCA subir)
+*.txt
+!requirements.txt
+!README.md

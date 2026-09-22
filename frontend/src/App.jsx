@@ -1,16 +1,37 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   Camera, Upload, CheckCircle, FileText, RefreshCcw, DollarSign, Calendar, Hash, 
-  User, ShieldAlert, History, Filter, Edit2, Trash2, X, PieChart, Users, Building2, 
-  BarChart3, ArrowRight, LogOut, AlertTriangle, ArrowDownCircle, Wallet, AlertCircle, 
-  HelpCircle, ChevronDown, HardDriveDownload, Ban, CreditCard, Receipt, FileSpreadsheet 
+  User, ShieldAlert, History, Edit2, Trash2, X, PieChart, Users, Building2,
+  ArrowRight, LogOut, AlertTriangle, ArrowDownCircle, Wallet, AlertCircle,
+  HelpCircle, ChevronDown, HardDriveDownload, Ban, CreditCard, Receipt
 } from 'lucide-react';
 import { useGoogleLogin } from '@react-oauth/google';
-import { jwtDecode } from 'jwt-decode';
 import axios from 'axios';
 
 const ADMIN_EMAILS = ["gerardo.beltran@e-voltage.cl", "jose.diaz@e-voltage.cl", "jorge.salas@e-voltage.cl"];
 const APPROVER_EMAILS = ["gerardo.beltran@e-voltage.cl", "jose.diaz@e-voltage.cl"];
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const api = axios.create({ baseURL: API_URL, timeout: 45000 });
+const authConfig = (extra = {}) => ({
+  ...extra,
+  headers: {
+    ...(extra.headers || {}),
+    Authorization: `Bearer ${sessionStorage.getItem('df_gastos_access_token') || ''}`,
+  },
+});
+
+const isRejectedOrVoid = (estado) => {
+  const value = (estado || '').toLowerCase().trim();
+  return ['rechazado', 'rechazada', 'anulado', 'anulada'].includes(value);
+};
+
+const isApprovedStatus = (estado) => ['aprobado', 'aprobada'].includes((estado || '').toLowerCase().trim());
+const isPendingStatus = (estado) => [
+  'pendiente de revisión', 'pendiente', 'pendiente_de_aprobacion', 'pendiente de aprobación'
+].includes((estado || '').toLowerCase().trim());
+
+const isValidExpense = (expense) => !isRejectedOrVoid(expense.estado)
+  && !['Saldo Inicial', 'Ingreso de Dinero', 'Nota de Crédito'].includes(expense.tipo_transaccion);
 
 const HoverDropdown = ({ label, value, options, onChange, className = "" }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -189,7 +210,8 @@ const StatusDonutChart = ({ pending = 0, approved = 0, rejected = 0, voided = 0 
 function App() {
   const [user, setUser] = useState(() => {
     const saved = localStorage.getItem('df_gastos_user');
-    return saved ? JSON.parse(saved) : null;
+    if (!saved || !sessionStorage.getItem('df_gastos_access_token')) return null;
+    try { return JSON.parse(saved); } catch { return null; }
   });
 
   useEffect(() => {
@@ -203,8 +225,6 @@ function App() {
   const [activeTab, setActiveTab] = useState('scanner'); // 'scanner' | 'history' | 'admin'
   
   // Scanner States
-  const [adminStatusFilter, setAdminStatusFilter] = useState('all');
-  const [adminSearchQuery, setAdminSearchQuery] = useState('');
   const [transactionType, setTransactionType] = useState(null);
   const [origenFondos, setOrigenFondos] = useState('');
   const [montoCaja, setMontoCaja] = useState('');
@@ -256,14 +276,18 @@ function App() {
         const userInfo = await axios.get('https://www.googleapis.com/oauth2/v3/userinfo', {
           headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
         });
-        setUser({ 
+        if (!userInfo.data.email_verified || !userInfo.data.email?.toLowerCase().endsWith('@e-voltage.cl')) {
+          throw new Error('Se requiere una cuenta corporativa @e-voltage.cl verificada.');
+        }
+        sessionStorage.setItem('df_gastos_access_token', tokenResponse.access_token);
+        setUser({
           name: userInfo.data.name, 
           email: userInfo.data.email, 
           picture: userInfo.data.picture 
         });
       } catch (err) {
         console.error('Failed to fetch user info', err);
-        alert('Error al obtener datos de Google.');
+        alert(err.message || 'Error al obtener datos de Google.');
       }
     },
     prompt: 'select_account'
@@ -299,9 +323,7 @@ function App() {
     formData.append('skip_ocr', (transactionType === 'Saldo Inicial' || transactionType === 'Ingreso de Dinero' || transactionType === 'Sin Respaldo') ? 'true' : 'false');
 
     try {
-      const response = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}` + '/upload-receipt', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      const response = await api.post('/upload-receipt', formData, authConfig());
 
       if (response.data.success) {
         setReviewData(response.data.data);
@@ -342,9 +364,7 @@ function App() {
         formData.append('costCenter', costCenter || reviewData.centro_costo);
         formData.append('skip_ocr', 'true');
         
-        const uploadRes = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/upload-receipt`, formData, {
-           headers: { 'Content-Type': 'multipart/form-data' }
-        });
+        const uploadRes = await api.post('/upload-receipt', formData, authConfig());
         if (uploadRes.data.success && uploadRes.data.data.link_drive) {
            finalLinkDrive = uploadRes.data.data.link_drive;
         } else {
@@ -365,7 +385,7 @@ function App() {
         factura_asociada: facturaAsociada, 
         descripcion: descripcion 
       };
-      const response = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/save-receipt`, payload);
+      const response = await api.post('/save-receipt', payload, authConfig());
       if (response.data.success) {
         setResult(response.data.data);
         setReviewData(null);
@@ -373,7 +393,7 @@ function App() {
       } else {
         setError("Error guardando: " + response.data.error);
       }
-    } catch (err) {
+    } catch {
       setError("Error de red guardando la boleta.");
     } finally {
       setIsSaving(false);
@@ -408,22 +428,15 @@ function App() {
     resetForm();
   };
 
-  const fetchHistory = async () => {
+  const fetchHistory = useCallback(async () => {
     if (!user) return;
     setLoadingHistory(true);
     try {
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-
       let response;
       if (activeTab === 'admin') {
-        response = await axios.get(
-          `${API_URL}/admin/history?email=${encodeURIComponent(user.email)}`,
-          { headers: { 'X-User-Email': user.email } }
-        );
+        response = await api.get('/admin/history', authConfig());
       } else {
-        response = await axios.get(
-          `${API_URL}/history?email=${encodeURIComponent(user.email)}`
-        );
+        response = await api.get('/history', authConfig());
       }
 
       if (response.data.success) {
@@ -436,14 +449,13 @@ function App() {
     } finally {
       setLoadingHistory(false);
     }
-  };
+  }, [activeTab, user]);
 
   useEffect(() => {
     if (user && activeTab !== 'admin') {
       const fetchCapital = async () => {
         try {
-          const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-          const res = await axios.get(`${API_URL}/capital/${encodeURIComponent(user.email)}`);
+          const res = await api.get('/capital', authConfig());
           if (res.data.success) setCapitalEntregado(parseFloat(res.data.monto_asignado) || 0);
         } catch (e) {
           console.error("Error fetching capital", e);
@@ -455,9 +467,9 @@ function App() {
 
   useEffect(() => {
     if ((activeTab === 'history' || activeTab === 'admin') && user) {
-      fetchHistory();
+      queueMicrotask(fetchHistory);
     }
-  }, [activeTab, user]);
+  }, [activeTab, user, fetchHistory]);
 
   const handleUpdateStatus = async (id, nuevoEstado) => {
     let comentarios = "";
@@ -468,13 +480,11 @@ function App() {
     }
     
     try {
-      await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/update-expense-status`, {
+      await api.post('/update-expense-status', {
         id,
         estado: nuevoEstado,
         comentarios_revisor: comentarios
-      }, {
-        headers: { 'X-User-Email': user?.email || '' }
-      });
+      }, authConfig());
       fetchHistory();
     } catch (err) {
       console.error("Error updating status", err);
@@ -489,9 +499,7 @@ function App() {
       async () => {
         setDialog({ isOpen: false });
         try {
-          await axios.delete(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/expense/${id}`, {
-            headers: { 'X-User-Email': user?.email || '' }
-          });
+          await api.delete(`/expense/${id}`, authConfig());
           fetchHistory();
         } catch (err) {
           console.error("Error deleting", err);
@@ -537,9 +545,7 @@ function App() {
         formData.append('costCenter', editForm.centro_costo);
         formData.append('skip_ocr', 'true');
 
-        const uploadRes = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/upload-receipt`, formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        });
+        const uploadRes = await api.post('/upload-receipt', formData, authConfig());
         if (uploadRes.data.success && uploadRes.data.data.link_drive) {
           finalLinkDrive = uploadRes.data.data.link_drive;
         } else {
@@ -554,10 +560,10 @@ function App() {
         link_drive: finalLinkDrive
       };
 
-      await axios.put(
-        `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/expense/${editingExpense.id}`, 
+      await api.put(
+        `/expense/${editingExpense.id}`,
         payload,
-        { headers: { 'X-User-Email': user?.email || '' } }
+        authConfig()
       );
       setEditingExpense(null);
       setEditFile(null);
@@ -627,7 +633,7 @@ function App() {
 
         const rows = [headers, ...dataRows];
 
-        const response = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/export-sheets`, { rows });
+        const response = await api.post('/export-sheets', { rows }, authConfig());
         if (response.data.success) {
           showSuccess("¡Exportación Exitosa!", `Se han exportado ${dataRows.length} registros a Google Sheets correctamente.`);
         } else {
@@ -647,29 +653,14 @@ function App() {
   const uniqueEstados = [...new Set(expenses.map(exp => exp.estado || 'Pendiente de Revisión'))].filter(Boolean).sort();
   const uniqueTipos = [...new Set(expenses.map(exp => exp.tipo_transaccion || 'Boleta'))].filter(Boolean).sort();
 
-  const filteredExpenses = expenses.filter(exp => {
+  const filteredExpenses = useMemo(() => expenses.filter(exp => {
     const matchDept = filterDept ? exp.departamento === filterDept : true;
     const matchCC = filterCostCenter ? exp.centro_costo === filterCostCenter : true;
     const matchUser = filterUser ? exp.usuario_nombre === filterUser : true;
     const matchEstado = filterEstado ? (exp.estado || 'Pendiente de Revisión') === filterEstado : true;
     const matchTipo = filterTipo ? (exp.tipo_transaccion || 'Boleta') === filterTipo : true;
     return matchDept && matchCC && matchUser && matchEstado && matchTipo;
-  });
-
-  const isRejectedOrVoid = (estado) => {
-    const s = (estado || '').toLowerCase().trim();
-    return s === 'rechazado' || s === 'rechazada' || s === 'anulado' || s === 'anulada';
-  };
-
-  const isApprovedStatus = (estado) => {
-    const s = (estado || '').toLowerCase().trim();
-    return s === 'aprobado' || s === 'aprobada';
-  };
-
-  const isPendingStatus = (estado) => {
-    const s = (estado || '').toLowerCase().trim();
-    return s === 'pendiente de revisión' || s === 'pendiente' || s === 'pendiente_de_aprobacion' || s === 'pendiente de aprobación';
-  };
+  }), [expenses, filterDept, filterCostCenter, filterUser, filterEstado, filterTipo]);
 
   // KPIs Financieros Segregados DealFlow v2.4 (3 Cajas Contables + Ciclo de Aprobación de Finanzas)
   const finanzas = useMemo(() => {
@@ -820,13 +811,6 @@ function App() {
   const ivaAcumulado = finanzas.ivaAcumulado;
   const totalInvoices = filteredExpenses.length;
 
-  const isValidExpense = (exp) => {
-    return !isRejectedOrVoid(exp.estado) && 
-           exp.tipo_transaccion !== 'Saldo Inicial' && 
-           exp.tipo_transaccion !== 'Ingreso de Dinero' && 
-           exp.tipo_transaccion !== 'Nota de Crédito';
-  };
-
   const expensesByDept = useMemo(() => {
     const res = {};
     filteredExpenses.forEach(exp => {
@@ -902,6 +886,7 @@ function App() {
                   <button
                     onClick={() => {
                       setUser(null);
+                      sessionStorage.removeItem('df_gastos_access_token');
                       setFile(null);
                       setResult(null);
                       setError(null);

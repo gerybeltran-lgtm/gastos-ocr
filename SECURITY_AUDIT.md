@@ -1,0 +1,61 @@
+# Auditoría de seguridad y arquitectura — DealFlow Gastos
+
+Fecha: 2026-09-22
+
+## Resumen ejecutivo
+
+La revisión encontró fallos críticos de autenticación y gestión de secretos que permitían leer o modificar información financiera mediante suplantación de encabezados HTTP. La remediación implementada centraliza autenticación y RBAC, elimina secretos del código, recalcula la contabilidad en el servidor y endurece la carga de archivos y las integraciones externas.
+
+## Hallazgos y estado
+
+### Crítico
+
+1. **Clave Supabase `service_role` expuesta en `backend/main.py`.** Eliminada del árbol de trabajo. El servicio ahora falla de forma segura si faltan `SUPABASE_URL` o `SUPABASE_KEY`. La clave expuesta debe revocarse/rotarse en Supabase porque permanece recuperable en el historial Git y cualquier clon anterior.
+2. **Suplantación de identidad y RBAC mediante `X-User-Email`/query params.** Corregida. `backend/security.py` verifica el access token OAuth con Google, comprueba audiencia, expiración, correo verificado y dominio corporativo. La identidad de cada escritura se deriva del token.
+3. **Endpoints sin autenticación.** Corregido para carga, guardado, historial, capital, edición, exportación, estados y eliminación.
+
+### Alto
+
+1. **Lectura horizontal (IDOR) de historial/capital.** Corregida eliminando el email controlado por el cliente.
+2. **Edición horizontal de rendiciones.** Corregida: un colaborador solo puede editar registros propios y pendientes; administradores pueden visualizar; aprobadores mantienen las acciones exclusivas.
+3. **Estado e IVA controlados por el navegador.** Corregido: nuevas rendiciones siempre nacen pendientes y el IVA se recalcula en servidor solo para Factura/Nota de Crédito.
+4. **Clave de Drive pública para cualquiera con enlace.** Corregido para nuevos archivos mediante permiso restringido al dominio configurado en `GOOGLE_DRIVE_READER_DOMAIN`. Los archivos históricos requieren una revisión/actualización de permisos.
+5. **Exportación de Sheets destructiva y sin autorización.** Corregida con rol admin y neutralización de fórmulas para evitar CSV/Sheets injection.
+
+### Medio
+
+1. **Flotantes para reglas contables.** Las validaciones usan ahora `Decimal` y cuantización explícita. Para una garantía completa, las columnas PostgreSQL deberían ser `numeric(14,2)` con constraints SQL.
+2. **Archivos temporales compartidos y fuga de `optimized_receipt.jpg`.** Corregido con un directorio temporal único por solicitud y limpieza garantizada.
+3. **Confianza en extensión/MIME del cliente.** Añadida validación de firmas JPEG/PNG/PDF, límite de 10 MB y límite razonable de páginas PDF.
+4. **Vision API sin timeout/reintentos.** Añadidos timeouts y backoff para fallos transitorios/429 sin registrar fragmentos del token.
+5. **CORS demasiado permisivo para previews Vercel.** Eliminada la regex global; métodos y encabezados están limitados.
+6. **SMTP sin timeout y recursos sin cierre garantizado.** Corregido con context manager, timeout y no-op si no hay contraseña.
+
+### Mejora recomendada / trabajo externo
+
+1. Activar RLS y políticas por propietario en `transacciones` y `capital_entregado`, aun cuando el backend use una clave privilegiada. Una clave `service_role` omite RLS, por lo que el backend debe seguir siendo la frontera autorizadora.
+2. Añadir constraints/triggers en PostgreSQL para estados válidos, importes no negativos, IVA y balance mixto; esto protege también contra escrituras fuera de esta API.
+3. Cambiar `SUPABASE_KEY` a una secret key moderna cuando el proyecto la ofrezca; las claves legacy `service_role` están en retirada.
+4. Aplicar rate limiting en Render/CDN para carga y OCR, y observabilidad estructurada sin PII.
+5. Migrar la exportación de Sheets a escritura transaccional o a una pestaña versionada; hoy un fallo entre `clear` y `update` puede dejar la hoja vacía.
+6. Restringir el alcance de la cuenta de servicio y separar identidades para Vision y Workspace.
+
+## Variables requeridas
+
+Backend (Render): `SUPABASE_URL`, `SUPABASE_KEY`, `GOOGLE_CREDENTIALS_JSON` o secret file, `GOOGLE_DRIVE_FOLDER_ID`, `GOOGLE_SHEETS_ID`, `GOOGLE_DRIVE_READER_DOMAIN`, `ALLOWED_ORIGINS`, y opcionalmente `GOOGLE_CLIENT_ID`, `SENDER_EMAIL`/`EMAIL_PASSWORD`.
+
+Frontend (Vercel): `VITE_API_URL` y `VITE_GOOGLE_CLIENT_ID`.
+
+`GOOGLE_CLIENT_ID` debe coincidir exactamente con `VITE_GOOGLE_CLIENT_ID`.
+
+## Acciones de despliegue obligatorias
+
+1. Rotar inmediatamente la clave Supabase expuesta y actualizar Render.
+2. Confirmar las variables anteriores antes del despliegue; el backend ya no arranca con secretos por defecto.
+3. Reescribir el historial Git si el repositorio fue compartido, sin considerar esto sustituto de la rotación.
+4. Revocar permisos `anyone` de los archivos existentes en la carpeta de Drive y aplicar acceso de dominio/grupo.
+5. Verificar políticas RLS y tipos/constraints con el esquema real antes de aplicar SQL.
+
+## Verificación incluida
+
+`backend/test_accounting.py` cubre IVA, fondos mixtos y montos negativos. La verificación final también debe incluir build del frontend, compilación Python, pruebas unitarias y smoke test autenticado contra un entorno de staging.
