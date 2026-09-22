@@ -19,7 +19,7 @@ La revisión encontró fallos críticos de autenticación y gestión de secretos
 1. **Lectura horizontal (IDOR) de historial/capital.** Corregida eliminando el email controlado por el cliente.
 2. **Edición horizontal de rendiciones.** Corregida: un colaborador solo puede editar registros propios y pendientes; administradores pueden visualizar; aprobadores mantienen las acciones exclusivas.
 3. **Estado e IVA controlados por el navegador.** Corregido: nuevas rendiciones siempre nacen pendientes y el IVA se recalcula en servidor solo para Factura/Nota de Crédito.
-4. **Clave de Drive pública para cualquiera con enlace.** Corregido para nuevos archivos mediante permiso restringido al dominio configurado en `GOOGLE_DRIVE_READER_DOMAIN`. Los archivos históricos requieren una revisión/actualización de permisos.
+4. **Clave de Drive pública para cualquiera con enlace.** Corregido para nuevos archivos mediante permiso restringido al dominio configurado en `GOOGLE_DRIVE_READER_DOMAIN`. También se auditaron los 172 comprobantes históricos y se retiraron los 65 permisos públicos detectados, conservando acceso lector para `e-voltage.cl`.
 5. **Exportación de Sheets destructiva y sin autorización.** Corregida con rol admin y neutralización de fórmulas para evitar CSV/Sheets injection.
 
 ### Medio
@@ -33,12 +33,9 @@ La revisión encontró fallos críticos de autenticación y gestión de secretos
 
 ### Mejora recomendada / trabajo externo
 
-1. Activar RLS y políticas por propietario en `transacciones` y `capital_entregado`, aun cuando el backend use una clave privilegiada. Una clave `service_role` omite RLS, por lo que el backend debe seguir siendo la frontera autorizadora.
-2. Añadir constraints/triggers en PostgreSQL para estados válidos, importes no negativos, IVA y balance mixto; esto protege también contra escrituras fuera de esta API.
-3. Cambiar `SUPABASE_KEY` a una secret key moderna cuando el proyecto la ofrezca; las claves legacy `service_role` están en retirada.
-4. Aplicar rate limiting en Render/CDN para carga y OCR, y observabilidad estructurada sin PII.
-5. Migrar la exportación de Sheets a escritura transaccional o a una pestaña versionada; hoy un fallo entre `clear` y `update` puede dejar la hoja vacía.
-6. Restringir el alcance de la cuenta de servicio y separar identidades para Vision y Workspace.
+1. Aplicar rate limiting en Render/CDN para carga y OCR, y observabilidad estructurada sin PII.
+2. Migrar la exportación de Sheets a escritura transaccional o a una pestaña versionada; hoy un fallo entre `clear` y `update` puede dejar la hoja vacía.
+3. Restringir el alcance de la cuenta de servicio y separar identidades para Vision y Workspace.
 
 ## Variables requeridas
 
@@ -55,7 +52,7 @@ Frontend (Vercel): `VITE_API_URL` y `VITE_GOOGLE_CLIENT_ID`.
 3. Completado: acceso Data API de `anon`/`authenticated` revocado sobre `transacciones` y `capital_entregado`; RLS permanece activo con denegación explícita para `transacciones`.
 4. Completado: constraints para montos no negativos, estados válidos y balance de fondos mixtos, más índice por usuario/fecha.
 5. Pendiente: corregir tres facturas históricas sin RUT proveedor y luego validar `transacciones_invoice_vendor_rut`.
-6. Pendiente: revocar permisos `anyone` de respaldos históricos de Drive; los nuevos archivos ya se restringen al dominio corporativo.
+6. Completado: 172 comprobantes históricos de Drive verificados; se revocaron 65 permisos `anyone`, sin fallos, y todos conservan acceso para el dominio corporativo.
 7. Recomendado: reescribir el historial Git para retirar el secreto antiguo, sin considerar esto sustituto de la rotación ya realizada.
 
 ## Verificación incluida
