@@ -12,3 +12,4 @@ google-auth-oauthlib
 numpy
 PyMuPDF
 python-dotenv
+requests
