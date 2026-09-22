@@ -48,13 +48,15 @@ Frontend (Vercel): `VITE_API_URL` y `VITE_GOOGLE_CLIENT_ID`.
 
 `GOOGLE_CLIENT_ID` debe coincidir exactamente con `VITE_GOOGLE_CLIENT_ID`.
 
-## Acciones de despliegue obligatorias
+## Estado de implementación en producción (2026-09-22)
 
-1. Rotar inmediatamente la clave Supabase expuesta y actualizar Render.
-2. Confirmar las variables anteriores antes del despliegue; el backend ya no arranca con secretos por defecto.
-3. Reescribir el historial Git si el repositorio fue compartido, sin considerar esto sustituto de la rotación.
-4. Revocar permisos `anyone` de los archivos existentes en la carpeta de Drive y aplicar acceso de dominio/grupo.
-5. Verificar políticas RLS y tipos/constraints con el esquema real antes de aplicar SQL.
+1. Completado: Render usa una secret key moderna de Supabase y las claves legacy `anon`/`service_role` quedaron deshabilitadas.
+2. Completado: commit de seguridad desplegado en Render y verificado `live`; las rutas privadas devuelven `401` sin autenticación.
+3. Completado: acceso Data API de `anon`/`authenticated` revocado sobre `transacciones` y `capital_entregado`; RLS permanece activo con denegación explícita para `transacciones`.
+4. Completado: constraints para montos no negativos, estados válidos y balance de fondos mixtos, más índice por usuario/fecha.
+5. Pendiente: corregir tres facturas históricas sin RUT proveedor y luego validar `transacciones_invoice_vendor_rut`.
+6. Pendiente: revocar permisos `anyone` de respaldos históricos de Drive; los nuevos archivos ya se restringen al dominio corporativo.
+7. Recomendado: reescribir el historial Git para retirar el secreto antiguo, sin considerar esto sustituto de la rotación ya realizada.
 
 ## Verificación incluida
 
