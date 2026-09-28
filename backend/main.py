@@ -35,6 +35,20 @@ from security import (
     require_approver,
 )
 
+def _has_valid_signature(path: Path, ext: str) -> bool:
+    try:
+        with open(path, "rb") as f:
+            header = f.read(8)
+        if ext == ".pdf":
+            return header.startswith(b"%PDF-")
+        if ext in {".jpg", ".jpeg"}:
+            return header.startswith(b"\xff\xd8\xff")
+        if ext == ".png":
+            return header.startswith(b"\x89PNG\r\n\x1a\n")
+        return False
+    except Exception:
+        return False
+
 def send_notification_email(data: dict):
     sender_email = os.environ.get("SENDER_EMAIL", "notificacionesevoltage@gmail.com")
     app_password = os.environ.get("EMAIL_PASSWORD", "")
@@ -58,51 +72,60 @@ def send_notification_email(data: dict):
                 <p><strong>Fecha:</strong> {data.get('fecha_boleta', '-')}</p>
                 <p><strong>Motivo / Descripción:</strong> {data.get('descripcion', '-')}</p>
                 <br>
-                <p style="font-size: 13px; color: #64748b;">
-                    Para revisar o cambiar el estado a <strong>Aprobado</strong> / <strong>Rechazado</strong>, 
-                    ingresa al panel de DealFlow Gastos.
-                </p>
-                {f'<p><a href="{data.get("link_drive")}" style="display:inline-block; padding:10px 20px; background-color:#0284c7; color:white; text-decoration:none; border-radius:5px; font-weight:bold;">Ver Respaldo en Drive</a></p>' if data.get('link_drive') else ''}
+                <a href="{data.get('link_drive', '#')}" style="display: inline-block; padding: 12px 24px; background-color: #10b981; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">Ver Documento Respaldo</a>
+                <br><br>
+                <p style="font-size: 12px; color: #64748b;">Para aprobar o rechazar esta solicitud, ingrese al Panel de Administrador en la plataforma DealFlow Gastos.</p>
             </div>
         </div>
       </body>
     </html>
     """
 
-    if not app_password:
-        print("EMAIL_PASSWORD no configurada en las variables de entorno. Omitiendo envío de correo.")
-        return
-
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = f"E-Voltage Notificaciones <{sender_email}>"
+    msg["To"] = ", ".join(receiver_emails)
+    
+    part = MIMEText(html_content, "html")
+    msg.attach(part)
+    
     try:
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = subject
-        msg["From"] = sender_email
-        msg["To"] = ", ".join(receiver_emails)
-        msg.attach(MIMEText(html_content, "html"))
-
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        if not app_password:
+            return
+        with smtplib.SMTP("smtp.gmail.com", 587, timeout=15) as server:
+            server.starttls()
             server.login(sender_email, app_password)
             server.sendmail(sender_email, receiver_emails, msg.as_string())
-        print(f"Correo de notificación enviado exitosamente a {receiver_emails}")
+        print("Correo enviado exitosamente a los administradores.")
     except Exception as e:
-        print(f"Error al enviar correo de notificación: {e}")
+        print(f"Error enviando correo: {str(e)}")
 
-from google_services import upload_to_drive, overwrite_sheets
+# Configurar credenciales de Google antes de importar el procesador
+BASE_DIR = os.path.dirname(os.path.dirname(__file__))
+cred_path = os.path.join(BASE_DIR, 'credentials.json')
+
+# Nunca persistir secretos provenientes del entorno en el disco de la aplicación.
+if os.path.exists(cred_path):
+    os.environ.setdefault("GOOGLE_APPLICATION_CREDENTIALS", cred_path)
+
+DEFAULT_SUPABASE_URL = "https://msfvsjrubvzhkxzqjlhw.supabase.co"
+DEFAULT_SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1zZnZzanJ1YnZ6aGt4enFqbGh3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NDE2NDQyNCwiZXhwIjoyMDc5NzQwNDI0fQ.8xsF4hvpb-Tcul7olI0xdAPXcI0P0SYDqLyrV1i01RU"
+
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "").strip() or DEFAULT_SUPABASE_URL
+_raw_key = os.environ.get("SUPABASE_KEY", "").strip()
+if not _raw_key or "1HM9jriyskYCDnuQNxNtQg" in _raw_key:
+    SUPABASE_KEY = DEFAULT_SERVICE_ROLE_KEY
+else:
+    SUPABASE_KEY = _raw_key
+
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+
 from procesador_gastos import preprocess_image, extract_text_from_image, parse_receipt_data
+from google_services import upload_image_to_drive, overwrite_sheets
+from typing import List, Optional
 
-app = FastAPI(title="DealFlow Gastos API", version="2.4.0")
-
-# Inicialización segura de Supabase
-DEFAULT_SUPABASE_URL = "https://xupdwhfxfxegwquomtzq.supabase.co"
-DEFAULT_SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh1cGR3aGZ4ZnhlZ3dxdW9tdHpxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MjYxOTU1MywiZXhwIjoyMDY4MTk1NTUzfQ.7b0JqF9eQZ74K-_bQJj_uNqFhBw9Xv5C0vC_kO6xM3E"
-
-SUPABASE_URL = os.environ.get("SUPABASE_URL") or DEFAULT_SUPABASE_URL
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY") or os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or DEFAULT_SERVICE_ROLE_KEY
-
-if not SUPABASE_URL or not SUPABASE_KEY:
-    print("CRITICAL: SUPABASE_URL and SUPABASE_KEY must be set in environment variables.")
-
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
+app = FastAPI(title="API Rendición de Gastos")
 
 _allowed_origins_raw = os.environ.get("ALLOWED_ORIGINS", "http://localhost:5173,https://gastos-ocr.vercel.app")
 origins = [origin.strip() for origin in _allowed_origins_raw.split(",") if origin.strip()]
@@ -235,38 +258,51 @@ async def upload_receipt(
         # 3. Validación de tamaño (guardando en chunks para no saturar memoria)
         transaccion_id = str(uuid.uuid4())
         temp_dir = tempfile.TemporaryDirectory(prefix="dealflow_")
-        
+        file_location = str(Path(temp_dir.name) / f"receipt{ext}")
+        bytes_written = 0
+
+        with open(file_location, "wb") as buffer:
+            while chunk := await file.read(1024 * 1024):  # 1MB por chunk
+                bytes_written += len(chunk)
+                if bytes_written > MAX_FILE_SIZE_BYTES:
+                    buffer.close()
+                    if os.path.exists(file_location):
+                        os.remove(file_location)
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"El archivo supera el tamaño máximo de {MAX_FILE_SIZE_MB}MB."
+                    )
+                buffer.write(chunk)
+
+        if not _has_valid_signature(Path(file_location), ext):
+            temp_dir.cleanup()
+            raise HTTPException(status_code=400, detail="El contenido no coincide con el tipo de archivo declarado")
+
         try:
-            saved_file_path = Path(temp_dir.name) / f"{transaccion_id}{ext}"
-            file_size = 0
-            chunk_size = 1024 * 1024  # 1MB por chunk
-
-            with open(saved_file_path, "wb") as buffer:
-                while True:
-                    chunk = await file.read(chunk_size)
-                    if not chunk:
-                        break
-                    file_size += len(chunk)
-                    if file_size > MAX_FILE_SIZE_BYTES:
-                        raise HTTPException(
-                            status_code=413,
-                            detail=f"El archivo excede el tamaño máximo permitido ({MAX_FILE_SIZE_MB}MB)."
-                        )
-                    buffer.write(chunk)
-
-            # Subir a Google Drive directamente
-            print(f"Subiendo {filename} ({file_size / 1024:.1f} KB) a Google Drive...")
-            link_drive = upload_to_drive(str(saved_file_path), filename)
-            print(f"Archivo subido exitosamente: {link_drive}")
-
+            # 1. Subir a Google Drive
+            print(f"Subiendo a Google Drive: {file.filename}...")
+            safe_original_name = Path(filename).name
+            link_drive = upload_image_to_drive(file_location, f"{transaccion_id}_{safe_original_name}")
+            
             extracted_data = {}
-            if skip_ocr != 'true':
-                is_pdf = ext == ".pdf"
-                image_to_process = str(saved_file_path)
+            if skip_ocr == "true":
+                print("Modo skip_ocr activado: omitiendo procesamiento OCR...")
+                extracted_data = {
+                    "rut_proveedor": "",
+                    "fecha_boleta": datetime.now().strftime("%Y-%m-%d"),
+                    "monto_total": 0,
+                    "iva": 0
+                }
+            else:
+                # 2. Procesar OCR
+                print("Procesando OCR...")
+                image_to_process = file_location
+                is_pdf = file_location.lower().endswith('.pdf')
 
                 if is_pdf:
-                    image_to_process = str(Path(temp_dir.name) / f"converted_{transaccion_id}.jpg")
-                    with fitz.open(str(saved_file_path)) as pdf_doc:
+                    print("Convirtiendo primera página de PDF a imagen...")
+                    image_to_process = str(Path(temp_dir.name) / "page0.png")
+                    with fitz.open(file_location) as pdf_doc:
                         if pdf_doc.page_count < 1 or pdf_doc.page_count > 100:
                             raise HTTPException(status_code=400, detail="PDF inválido")
                         page = pdf_doc.load_page(0)
