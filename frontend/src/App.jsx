@@ -11,14 +11,28 @@ import axios from 'axios';
 const ADMIN_EMAILS = ["gerardo.beltran@e-voltage.cl", "jose.diaz@e-voltage.cl", "jorge.salas@e-voltage.cl"];
 const APPROVER_EMAILS = ["gerardo.beltran@e-voltage.cl", "jose.diaz@e-voltage.cl"];
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-const api = axios.create({ baseURL: API_URL, timeout: 45000 });
-const authConfig = (extra = {}) => ({
-  ...extra,
-  headers: {
-    ...(extra.headers || {}),
-    Authorization: `Bearer ${sessionStorage.getItem('df_gastos_access_token') || ''}`,
-  },
-});
+const api = axios.create({ baseURL: API_URL, timeout: 60000 });
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      window.dispatchEvent(new CustomEvent('df_auth_expired'));
+    }
+    return Promise.reject(error);
+  }
+);
+
+const authConfig = (extra = {}) => {
+  const token = sessionStorage.getItem('df_gastos_access_token') || localStorage.getItem('df_gastos_access_token') || '';
+  return {
+    ...extra,
+    headers: {
+      ...(extra.headers || {}),
+      Authorization: `Bearer ${token}`,
+    },
+  };
+};
 
 const isRejectedOrVoid = (estado) => {
   const value = (estado || '').toLowerCase().trim();
@@ -210,7 +224,8 @@ const StatusDonutChart = ({ pending = 0, approved = 0, rejected = 0, voided = 0 
 function App() {
   const [user, setUser] = useState(() => {
     const saved = localStorage.getItem('df_gastos_user');
-    if (!saved || !sessionStorage.getItem('df_gastos_access_token')) return null;
+    const token = sessionStorage.getItem('df_gastos_access_token') || localStorage.getItem('df_gastos_access_token');
+    if (!saved || !token) return null;
     try { return JSON.parse(saved); } catch { return null; }
   });
 
@@ -224,6 +239,12 @@ function App() {
 
   const [activeTab, setActiveTab] = useState('scanner'); // 'scanner' | 'history' | 'admin'
   
+  // Resilient Auth & Server states
+  const [isAuthExpired, setIsAuthExpired] = useState(false);
+  const [serverStatus, setServerStatus] = useState('checking'); // 'checking' | 'ready' | 'waking'
+  const [hasDraft, setHasDraft] = useState(false);
+  const [draftInfo, setDraftInfo] = useState(null);
+
   // Scanner States
   const [transactionType, setTransactionType] = useState(null);
   const [origenFondos, setOrigenFondos] = useState('');
@@ -270,6 +291,98 @@ function App() {
   const isAdmin = user && ADMIN_EMAILS.includes(user.email.toLowerCase());
   const isApprover = user && APPROVER_EMAILS.includes(user.email.toLowerCase());
 
+  // Listener para expiración de sesión (401 global)
+  useEffect(() => {
+    const handleAuthExpired = () => setIsAuthExpired(true);
+    window.addEventListener('df_auth_expired', handleAuthExpired);
+    return () => window.removeEventListener('df_auth_expired', handleAuthExpired);
+  }, []);
+
+  // Ping proactivo para despertar contenedor en Render (Cold start)
+  useEffect(() => {
+    let isMounted = true;
+    const checkServer = async () => {
+      try {
+        await api.get('/', { timeout: 8000 });
+        if (isMounted) setServerStatus('ready');
+      } catch {
+        if (isMounted) setServerStatus('waking');
+        const interval = setInterval(async () => {
+          try {
+            await api.get('/', { timeout: 15000 });
+            if (isMounted) {
+              setServerStatus('ready');
+              clearInterval(interval);
+            }
+          } catch {
+            // Esperando a que despierte
+          }
+        }, 4000);
+        return () => clearInterval(interval);
+      }
+    };
+    checkServer();
+    return () => { isMounted = false; };
+  }, []);
+
+  // Verificar borrador guardado al cargar
+  useEffect(() => {
+    try {
+      const savedDraft = localStorage.getItem('df_active_draft');
+      if (savedDraft) {
+        const parsed = JSON.parse(savedDraft);
+        if (parsed?.reviewData) {
+          setHasDraft(true);
+          setDraftInfo(parsed);
+        }
+      }
+    } catch (e) {
+      console.error("Error leyendo borrador", e);
+    }
+  }, []);
+
+  // Autoguardado de borrador mientras se completan datos
+  useEffect(() => {
+    if (reviewData) {
+      try {
+        localStorage.setItem('df_active_draft', JSON.stringify({
+          reviewData,
+          transactionType,
+          origenFondos,
+          facturaAsociada,
+          department,
+          costCenter,
+          montoCaja,
+          montoNC,
+          timestamp: new Date().toISOString()
+        }));
+      } catch (e) {
+        console.error("Error guardando borrador", e);
+      }
+    }
+  }, [reviewData, transactionType, origenFondos, facturaAsociada, department, costCenter, montoCaja, montoNC]);
+
+  const restoreDraft = () => {
+    if (draftInfo?.reviewData) {
+      setReviewData(draftInfo.reviewData);
+      if (draftInfo.transactionType) setTransactionType(draftInfo.transactionType);
+      if (draftInfo.origenFondos) setOrigenFondos(draftInfo.origenFondos);
+      if (draftInfo.facturaAsociada) setFacturaAsociada(draftInfo.facturaAsociada);
+      if (draftInfo.department) setDepartment(draftInfo.department);
+      if (draftInfo.costCenter) setCostCenter(draftInfo.costCenter);
+      if (draftInfo.montoCaja) setMontoCaja(draftInfo.montoCaja);
+      if (draftInfo.montoNC) setMontoNC(draftInfo.montoNC);
+      setHasDraft(false);
+      setDraftInfo(null);
+    }
+  };
+
+  const discardDraft = () => {
+    localStorage.removeItem('df_active_draft');
+    setHasDraft(false);
+    setDraftInfo(null);
+  };
+
   const login = useGoogleLogin({
     onSuccess: async (tokenResponse) => {
       try {
@@ -279,12 +392,16 @@ function App() {
         if (!userInfo.data.email_verified || !userInfo.data.email?.toLowerCase().endsWith('@e-voltage.cl')) {
           throw new Error('Se requiere una cuenta corporativa @e-voltage.cl verificada.');
         }
+        const expiresAt = Date.now() + (tokenResponse.expires_in || 3600) * 1000;
         sessionStorage.setItem('df_gastos_access_token', tokenResponse.access_token);
+        localStorage.setItem('df_gastos_access_token', tokenResponse.access_token);
+        localStorage.setItem('df_gastos_token_expires_at', expiresAt.toString());
         setUser({
           name: userInfo.data.name, 
           email: userInfo.data.email, 
           picture: userInfo.data.picture 
         });
+        setIsAuthExpired(false);
       } catch (err) {
         console.error('Failed to fetch user info', err);
         alert(err.message || 'Error al obtener datos de Google.');
@@ -400,12 +517,16 @@ function App() {
         setResult(response.data.data);
         setReviewData(null);
         setManualFile(null);
+        localStorage.removeItem('df_active_draft');
+        setHasDraft(false);
+        setDraftInfo(null);
       } else {
         setError("Error guardando: " + response.data.error);
       }
     } catch (err) {
       if (err.response?.status === 401) {
-        setError("Tu sesión ha expirado o no es válida. Por favor, vuelve a iniciar sesión con Google.");
+        setIsAuthExpired(true);
+        setError("Tu sesión ha expirado o no es válida. Por favor, reconéctate con Google.");
       } else {
         const errorDetail = err.response?.data?.detail || err.response?.data?.error;
         if (typeof errorDetail === 'string') {
@@ -431,6 +552,9 @@ function App() {
     setOrigenFondos('');
     setFacturaAsociada('');
     setDescripcion('');
+    localStorage.removeItem('df_active_draft');
+    setHasDraft(false);
+    setDraftInfo(null);
   };
 
   const resetAll = () => {
@@ -440,6 +564,9 @@ function App() {
     setError(null);
     setCostCenter("");
     setDepartment("");
+    localStorage.removeItem('df_active_draft');
+    setHasDraft(false);
+    setDraftInfo(null);
   };
 
   const goHome = () => {
@@ -883,7 +1010,18 @@ function App() {
             </button>
 
             {/* Right: Company Logo Pill & User Profile */}
-            <div className="flex items-center gap-5 shrink-0">
+            <div className="flex items-center gap-3 sm:gap-5 shrink-0">
+              {serverStatus === 'waking' && (
+                <div className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-[11px] font-medium animate-pulse" title="El servidor se está iniciando en Render">
+                  <RefreshCcw className="h-3 w-3 animate-spin" /> Conectando servidor...
+                </div>
+              )}
+              {serverStatus === 'ready' && (
+                <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-[11px] font-medium" title="Servidor listo y conectado">
+                  <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" /> Servidor conectado
+                </div>
+              )}
+
               <div className="hidden sm:flex items-center gap-3 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
                 <img src="/logo.png" alt="E-Voltage" className="object-contain shrink-0 h-6" />
                 <span className="text-[11px] text-slate-400 font-medium border-l border-slate-200 pl-3">Powered by DealFlow</span>
@@ -906,8 +1044,12 @@ function App() {
                   </div>
                   <button
                     onClick={() => {
-                      setUser(null);
+                      localStorage.removeItem('df_gastos_user');
+                      localStorage.removeItem('df_gastos_access_token');
+                      localStorage.removeItem('df_gastos_token_expires_at');
+                      localStorage.removeItem('df_active_draft');
                       sessionStorage.removeItem('df_gastos_access_token');
+                      setUser(null);
                       setFile(null);
                       setResult(null);
                       setError(null);
@@ -956,6 +1098,35 @@ function App() {
         </header>
 
         <main className="max-w-7xl mx-auto px-4 py-8">
+          {hasDraft && !reviewData && user && (
+            <div className="mb-6 bg-gradient-to-r from-amber-50 to-amber-100/60 border border-amber-200 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm animate-fade-in">
+              <div className="flex items-center gap-3.5">
+                <div className="h-10 w-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <FileText className="h-5 w-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-slate-800">Rendición pendiente sin guardar</h4>
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    Detectamos datos de una boleta previa ({draftInfo?.reviewData?.proveedor || 'Sin proveedor'} - ${parseFloat(draftInfo?.reviewData?.monto_total || 0).toLocaleString('es-CL')}). ¿Deseas recuperarla?
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2.5 shrink-0 w-full sm:w-auto">
+                <button 
+                  onClick={restoreDraft} 
+                  className="flex-1 sm:flex-none px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5"
+                >
+                  <CheckCircle className="h-4 w-4" /> Recuperar Datos
+                </button>
+                <button 
+                  onClick={discardDraft} 
+                  className="flex-1 sm:flex-none px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 rounded-xl text-xs font-semibold transition-colors"
+                >
+                  Descartar
+                </button>
+              </div>
+            </div>
+          )}
           {!user ? (
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-10 flex flex-col items-center text-center max-w-md mx-auto mt-16 bg-white">
               <img src="/icon-192.png" alt="DealFlow Gastos" className="h-20 w-20 rounded-2xl shadow-md mb-6" />
@@ -2103,6 +2274,31 @@ function App() {
                 }`}
               >
                 {dialog.type === 'confirm' ? 'Aceptar' : 'Entendido'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Reconexión Segura de Google (si expira la sesión en segundo plano) */}
+      {isAuthExpired && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 sm:p-7 text-center shadow-xl border border-slate-200">
+            <div className="h-14 w-14 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-4 border border-amber-200">
+              <ShieldAlert className="h-8 w-8 text-amber-600" />
+            </div>
+            <h3 className="text-lg font-bold text-slate-800 mb-2">Sesión de Google expirada</h3>
+            <p className="text-xs text-slate-600 mb-6 leading-relaxed">
+              Por seguridad, el token corporativo de Google caduca tras 1 hora de uso. 
+              <strong> Tus datos en pantalla y archivos adjuntos están seguros y no se perderán</strong>. 
+              Reconéctate en un clic para continuar guardando.
+            </p>
+            <div className="flex flex-col gap-2">
+              <button 
+                onClick={() => login()} 
+                className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-sm transition-colors text-sm"
+              >
+                <RefreshCcw className="h-4 w-4" /> Reconectar con Google
               </button>
             </div>
           </div>
