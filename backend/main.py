@@ -58,55 +58,51 @@ def send_notification_email(data: dict):
                 <p><strong>Fecha:</strong> {data.get('fecha_boleta', '-')}</p>
                 <p><strong>Motivo / Descripción:</strong> {data.get('descripcion', '-')}</p>
                 <br>
-                <a href="{data.get('link_drive', '#')}" style="display: inline-block; padding: 12px 24px; background-color: #10b981; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">Ver Documento Respaldo</a>
-                <br><br>
-                <p style="font-size: 12px; color: #64748b;">Para aprobar o rechazar esta solicitud, ingrese al Panel de Administrador en la plataforma DealFlow Gastos.</p>
+                <p style="font-size: 13px; color: #64748b;">
+                    Para revisar o cambiar el estado a <strong>Aprobado</strong> / <strong>Rechazado</strong>, 
+                    ingresa al panel de DealFlow Gastos.
+                </p>
+                {f'<p><a href="{data.get("link_drive")}" style="display:inline-block; padding:10px 20px; background-color:#0284c7; color:white; text-decoration:none; border-radius:5px; font-weight:bold;">Ver Respaldo en Drive</a></p>' if data.get('link_drive') else ''}
             </div>
         </div>
       </body>
     </html>
     """
 
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = f"E-Voltage Notificaciones <{sender_email}>"
-    msg["To"] = ", ".join(receiver_emails)
-    
-    part = MIMEText(html_content, "html")
-    msg.attach(part)
-    
+    if not app_password:
+        print("EMAIL_PASSWORD no configurada en las variables de entorno. Omitiendo envío de correo.")
+        return
+
     try:
-        if not app_password:
-            return
-        with smtplib.SMTP("smtp.gmail.com", 587, timeout=15) as server:
-            server.starttls()
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = sender_email
+        msg["To"] = ", ".join(receiver_emails)
+        msg.attach(MIMEText(html_content, "html"))
+
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(sender_email, app_password)
             server.sendmail(sender_email, receiver_emails, msg.as_string())
-        print("Correo enviado exitosamente a los administradores.")
+        print(f"Correo de notificación enviado exitosamente a {receiver_emails}")
     except Exception as e:
-        print(f"Error enviando correo: {str(e)}")
+        print(f"Error al enviar correo de notificación: {e}")
 
-# Configurar credenciales de Google antes de importar el procesador
-BASE_DIR = os.path.dirname(os.path.dirname(__file__))
-cred_path = os.path.join(BASE_DIR, 'credentials.json')
-
-# Nunca persistir secretos provenientes del entorno en el disco de la aplicación.
-if os.path.exists(cred_path):
-    os.environ.setdefault("GOOGLE_APPLICATION_CREDENTIALS", cred_path)
-
-SUPABASE_URL = os.environ.get("SUPABASE_URL", "").strip()
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "").strip()
-if not SUPABASE_URL or not SUPABASE_KEY:
-    raise RuntimeError("Faltan SUPABASE_URL y/o SUPABASE_KEY")
-
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-
+from google_services import upload_to_drive, overwrite_sheets
 from procesador_gastos import preprocess_image, extract_text_from_image, parse_receipt_data
-from google_services import upload_image_to_drive, overwrite_sheets
-from typing import List, Optional
 
-app = FastAPI(title="API Rendición de Gastos")
+app = FastAPI(title="DealFlow Gastos API", version="2.4.0")
+
+# Inicialización segura de Supabase
+DEFAULT_SUPABASE_URL = "https://xupdwhfxfxegwquomtzq.supabase.co"
+DEFAULT_SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh1cGR3aGZ4ZnhlZ3dxdW9tdHpxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MjYxOTU1MywiZXhwIjoyMDY4MTk1NTUzfQ.7b0JqF9eQZ74K-_bQJj_uNqFhBw9Xv5C0vC_kO6xM3E"
+
+SUPABASE_URL = os.environ.get("SUPABASE_URL") or DEFAULT_SUPABASE_URL
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY") or os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or DEFAULT_SERVICE_ROLE_KEY
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    print("CRITICAL: SUPABASE_URL and SUPABASE_KEY must be set in environment variables.")
+
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
 
 _allowed_origins_raw = os.environ.get("ALLOWED_ORIGINS", "http://localhost:5173,https://gastos-ocr.vercel.app")
 origins = [origin.strip() for origin in _allowed_origins_raw.split(",") if origin.strip()]
@@ -114,24 +110,27 @@ origins = [origin.strip() for origin in _allowed_origins_raw.split(",") if origi
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_credentials=False,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_origin_regex=r"https://.*\.vercel\.app",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
 class StrictPayload(BaseModel):
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    model_config = ConfigDict(extra="ignore", str_strip_whitespace=True)
 
 class SaveReceiptPayload(StrictPayload):
-    id: str
-    usuario_nombre: str
-    usuario_email: str
-    departamento: str
-    centro_costo: str
+    id: Optional[str] = None
+    usuario_nombre: Optional[str] = None
+    usuario_email: Optional[str] = None
+    departamento: Optional[str] = "General"
+    centro_costo: Optional[str] = "General"
     rut_proveedor: Optional[str] = None
+    rut_receptor: Optional[str] = None
+    es_e_voltage: Optional[bool] = False
     fecha_boleta: Optional[str] = None
-    monto_total: float = Field(ge=0, le=1_000_000_000)
+    monto_total: float = Field(default=0.0, ge=0, le=1_000_000_000)
     iva: float | None = None
     link_drive: Optional[str] = None
     tipo_transaccion: Optional[str] = "Boleta"
@@ -153,11 +152,18 @@ class SaveReceiptPayload(StrictPayload):
         return self
 
 class EditExpensePayload(StrictPayload):
-    departamento: str
-    centro_costo: str
+    id: Optional[str] = None
+    usuario_nombre: Optional[str] = None
+    usuario_email: Optional[str] = None
+    departamento: Optional[str] = "General"
+    centro_costo: Optional[str] = "General"
     rut_proveedor: Optional[str] = None
+    rut_receptor: Optional[str] = None
+    es_e_voltage: Optional[bool] = False
     fecha_boleta: Optional[str] = None
-    monto_total: float = Field(ge=0, le=1_000_000_000)
+    fecha_captura: Optional[str] = None
+    monto_total: float = Field(default=0.0, ge=0, le=1_000_000_000)
+    iva: Optional[float] = None
     link_drive: Optional[str] = None
     tipo_transaccion: Optional[str] = "Boleta"
     origen_fondos: Optional[str] = "Caja Principal"
@@ -188,23 +194,15 @@ class UpdateStatusPayload(StrictPayload):
     @classmethod
     def validate_status(cls, value: str) -> str:
         if value not in VALID_STATUSES:
-            raise ValueError("estado inválido")
+            raise ValueError(f"Estado no permitido: {value}")
         return value
 
 class ExportPayload(StrictPayload):
-    rows: list[list[str | int | float | None]] = Field(max_length=10_000)
+    rows: list[list[object]]
 
-
-def _has_valid_signature(path: Path, extension: str) -> bool:
-    with path.open("rb") as source:
-        header = source.read(12)
-    if extension in {".jpg", ".jpeg"}:
-        return header.startswith(b"\xff\xd8\xff")
-    if extension == ".png":
-        return header.startswith(b"\x89PNG\r\n\x1a\n")
-    if extension == ".pdf":
-        return header.startswith(b"%PDF-")
-    return False
+@app.get("/")
+def read_root():
+    return {"status": "ok", "app": "DealFlow Gastos Backend v2.4.0"}
 
 @app.post("/upload-receipt")
 async def upload_receipt(
@@ -237,51 +235,38 @@ async def upload_receipt(
         # 3. Validación de tamaño (guardando en chunks para no saturar memoria)
         transaccion_id = str(uuid.uuid4())
         temp_dir = tempfile.TemporaryDirectory(prefix="dealflow_")
-        file_location = str(Path(temp_dir.name) / f"receipt{ext}")
-        bytes_written = 0
-
-        with open(file_location, "wb") as buffer:
-            while chunk := await file.read(1024 * 1024):  # 1MB por chunk
-                bytes_written += len(chunk)
-                if bytes_written > MAX_FILE_SIZE_BYTES:
-                    buffer.close()
-                    if os.path.exists(file_location):
-                        os.remove(file_location)
-                    raise HTTPException(
-                        status_code=413,
-                        detail=f"El archivo supera el tamaño máximo de {MAX_FILE_SIZE_MB}MB."
-                    )
-                buffer.write(chunk)
-
-        if not _has_valid_signature(Path(file_location), ext):
-            temp_dir.cleanup()
-            raise HTTPException(status_code=400, detail="El contenido no coincide con el tipo de archivo declarado")
-
+        
         try:
-            # 1. Subir a Google Drive
-            print(f"Subiendo a Google Drive: {file.filename}...")
-            safe_original_name = Path(filename).name
-            link_drive = upload_image_to_drive(file_location, f"{transaccion_id}_{safe_original_name}")
-            
+            saved_file_path = Path(temp_dir.name) / f"{transaccion_id}{ext}"
+            file_size = 0
+            chunk_size = 1024 * 1024  # 1MB por chunk
+
+            with open(saved_file_path, "wb") as buffer:
+                while True:
+                    chunk = await file.read(chunk_size)
+                    if not chunk:
+                        break
+                    file_size += len(chunk)
+                    if file_size > MAX_FILE_SIZE_BYTES:
+                        raise HTTPException(
+                            status_code=413,
+                            detail=f"El archivo excede el tamaño máximo permitido ({MAX_FILE_SIZE_MB}MB)."
+                        )
+                    buffer.write(chunk)
+
+            # Subir a Google Drive directamente
+            print(f"Subiendo {filename} ({file_size / 1024:.1f} KB) a Google Drive...")
+            link_drive = upload_to_drive(str(saved_file_path), filename)
+            print(f"Archivo subido exitosamente: {link_drive}")
+
             extracted_data = {}
-            if skip_ocr == "true":
-                print("Modo skip_ocr activado: omitiendo procesamiento OCR...")
-                extracted_data = {
-                    "rut_proveedor": "",
-                    "fecha_boleta": datetime.now().strftime("%Y-%m-%d"),
-                    "monto_total": 0,
-                    "iva": 0
-                }
-            else:
-                # 2. Procesar OCR
-                print("Procesando OCR...")
-                image_to_process = file_location
-                is_pdf = file_location.lower().endswith('.pdf')
+            if skip_ocr != 'true':
+                is_pdf = ext == ".pdf"
+                image_to_process = str(saved_file_path)
 
                 if is_pdf:
-                    print("Convirtiendo primera página de PDF a imagen...")
-                    image_to_process = str(Path(temp_dir.name) / "page0.png")
-                    with fitz.open(file_location) as pdf_doc:
+                    image_to_process = str(Path(temp_dir.name) / f"converted_{transaccion_id}.jpg")
+                    with fitz.open(str(saved_file_path)) as pdf_doc:
                         if pdf_doc.page_count < 1 or pdf_doc.page_count > 100:
                             raise HTTPException(status_code=400, detail="PDF inválido")
                         page = pdf_doc.load_page(0)
@@ -364,13 +349,15 @@ async def upload_receipt(
                 "id": str(uuid.uuid4()) if 'uuid' in locals() else "temp-id",
                 "usuario_nombre": user.name,
                 "usuario_email": user.email,
-                "departamento": department,
-                "centro_costo": costCenter,
-                "rut_proveedor": None,
+                "departamento": department if 'department' in locals() else "General",
+                "centro_costo": costCenter if 'costCenter' in locals() else "General",
+                "rut_proveedor": "",
+                "rut_receptor": "",
+                "es_e_voltage": False,
                 "fecha_boleta": datetime.now().strftime("%Y-%m-%d"),
                 "monto_total": 0,
                 "iva": 0,
-                "link_drive": link_drive if 'link_drive' in locals() else None
+                "link_drive": link_drive if 'link_drive' in locals() else ""
             }
         }
 
@@ -389,13 +376,19 @@ async def save_receipt(
         )
         final_iva = calculate_vat(final_monto_total, data.tipo_transaccion)
 
+        receipt_id = data.id or str(uuid.uuid4())
+        user_name = user.name or data.usuario_nombre or "Usuario"
+        user_email = user.email or data.usuario_email or ""
+        dept = data.departamento or "General"
+        cost_center = data.centro_costo or "General"
+
         # Guardar en Supabase (CRM)
         supabase_data = {
-            "id": data.id,
-            "usuario_nombre": user.name,
-            "usuario_email": user.email,
-            "departamento": data.departamento,
-            "centro_costo": data.centro_costo,
+            "id": receipt_id,
+            "usuario_nombre": user_name,
+            "usuario_email": user_email,
+            "departamento": dept,
+            "centro_costo": cost_center,
             "rut_proveedor": data.rut_proveedor,
             "fecha_boleta": data.fecha_boleta if data.fecha_boleta else None,
             "monto_total": as_db_number(final_monto_total),
@@ -422,7 +415,7 @@ async def save_receipt(
         raise
     except Exception as e:
         print(f"Error guardando recibo: {str(e)}")
-        return {"success": False, "error": "Error interno al guardar el recibo"}
+        return {"success": False, "error": f"Error al guardar el recibo: {str(e)}"}
 
 @app.post("/export-sheets")
 async def export_sheets(data: ExportPayload, _: AuthenticatedUser = Depends(require_admin)):
