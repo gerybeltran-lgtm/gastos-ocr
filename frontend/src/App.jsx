@@ -375,8 +375,18 @@ function App() {
       }
 
       const payload = { 
-        ...reviewData, 
-        link_drive: finalLinkDrive, 
+        id: reviewData.id || undefined,
+        usuario_nombre: user?.name || reviewData.usuario_nombre,
+        usuario_email: user?.email || reviewData.usuario_email,
+        departamento: department || reviewData.departamento || "General",
+        centro_costo: costCenter || reviewData.centro_costo || "General",
+        rut_proveedor: reviewData.rut_proveedor || '',
+        rut_receptor: reviewData.rut_receptor || '',
+        es_e_voltage: !!reviewData.es_e_voltage,
+        fecha_boleta: reviewData.fecha_boleta || null,
+        monto_total: parseFloat(reviewData.monto_total || 0),
+        iva: reviewData.iva != null ? parseFloat(reviewData.iva) : 0,
+        link_drive: finalLinkDrive || '', 
         tipo_transaccion: transactionType, 
         origen_fondos: origenFondos, 
         monto_caja: montoCaja ? parseFloat(montoCaja) : 0,
@@ -393,8 +403,19 @@ function App() {
       } else {
         setError("Error guardando: " + response.data.error);
       }
-    } catch {
-      setError("Error de red guardando la boleta.");
+    } catch (err) {
+      if (err.response?.status === 401) {
+        setError("Tu sesión ha expirado o no es válida. Por favor, vuelve a iniciar sesión con Google.");
+      } else {
+        const errorDetail = err.response?.data?.detail || err.response?.data?.error;
+        if (typeof errorDetail === 'string') {
+          setError(`Error guardando: ${errorDetail}`);
+        } else if (Array.isArray(errorDetail)) {
+          setError(`Error de validación: ${errorDetail.map(e => e.msg || e.loc?.join('.')).join(', ')}`);
+        } else {
+          setError("Error al guardar la boleta: " + (err.message || "Error de red o conexión"));
+        }
+      }
     } finally {
       setIsSaving(false);
     }
