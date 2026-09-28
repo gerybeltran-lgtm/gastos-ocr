@@ -35,20 +35,6 @@ from security import (
     require_approver,
 )
 
-def _has_valid_signature(path: Path, ext: str) -> bool:
-    try:
-        with open(path, "rb") as f:
-            header = f.read(8)
-        if ext == ".pdf":
-            return header.startswith(b"%PDF-")
-        if ext in {".jpg", ".jpeg"}:
-            return header.startswith(b"\xff\xd8\xff")
-        if ext == ".png":
-            return header.startswith(b"\x89PNG\r\n\x1a\n")
-        return False
-    except Exception:
-        return False
-
 def send_notification_email(data: dict):
     sender_email = os.environ.get("SENDER_EMAIL", "notificacionesevoltage@gmail.com")
     app_password = os.environ.get("EMAIL_PASSWORD", "")
@@ -140,6 +126,16 @@ app.add_middleware(
 )
 
 
+@app.get("/")
+@app.head("/")
+def health_check():
+    return {
+        "status": "ok",
+        "app": "DealFlow Gastos Backend v2.4.0",
+        "version": "2.4.0",
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }
+
 class StrictPayload(BaseModel):
     model_config = ConfigDict(extra="ignore", str_strip_whitespace=True)
 
@@ -165,6 +161,29 @@ class SaveReceiptPayload(StrictPayload):
     factura_asociada: Optional[str] = None
     comentarios_revisor: Optional[str] = None
     descripcion: Optional[str] = None
+
+    @field_validator("monto_total", "monto_caja", "monto_nc", "iva", mode="before")
+    @classmethod
+    def coerce_numeric_fields(cls, v):
+        if v is None or v == "" or v == "null":
+            return 0.0
+        if isinstance(v, (int, float)):
+            return float(v)
+        if isinstance(v, str):
+            clean = v.replace("$", "").replace("CLP", "").replace(".", "").replace(",", ".").strip()
+            try:
+                return float(clean) if clean else 0.0
+            except ValueError:
+                return 0.0
+        return 0.0
+
+    @field_validator("fecha_boleta", "rut_proveedor", "rut_receptor", "factura_asociada", "descripcion", mode="before")
+    @classmethod
+    def coerce_string_fields(cls, v):
+        if v is None or v == "" or v == "null":
+            return None
+        cleaned = str(v).strip()
+        return cleaned if cleaned else None
 
     @model_validator(mode="after")
     def validate_document_rules(self):
@@ -198,6 +217,29 @@ class EditExpensePayload(StrictPayload):
     comentarios_revisor: Optional[str] = None
     descripcion: Optional[str] = None
 
+    @field_validator("monto_total", "monto_caja", "monto_nc", "iva", mode="before")
+    @classmethod
+    def coerce_numeric_fields(cls, v):
+        if v is None or v == "" or v == "null":
+            return 0.0
+        if isinstance(v, (int, float)):
+            return float(v)
+        if isinstance(v, str):
+            clean = v.replace("$", "").replace("CLP", "").replace(".", "").replace(",", ".").strip()
+            try:
+                return float(clean) if clean else 0.0
+            except ValueError:
+                return 0.0
+        return 0.0
+
+    @field_validator("fecha_boleta", "fecha_captura", "rut_proveedor", "rut_receptor", "factura_asociada", "descripcion", mode="before")
+    @classmethod
+    def coerce_string_fields(cls, v):
+        if v is None or v == "" or v == "null":
+            return None
+        cleaned = str(v).strip()
+        return cleaned if cleaned else None
+
     @model_validator(mode="after")
     def validate_document_rules(self):
         if self.tipo_transaccion == "Factura" and not self.rut_proveedor:
@@ -217,15 +259,23 @@ class UpdateStatusPayload(StrictPayload):
     @classmethod
     def validate_status(cls, value: str) -> str:
         if value not in VALID_STATUSES:
-            raise ValueError(f"Estado no permitido: {value}")
+            raise ValueError("estado inválido")
         return value
 
 class ExportPayload(StrictPayload):
-    rows: list[list[object]]
+    rows: list[list[str | int | float | None]] = Field(max_length=10_000)
 
-@app.get("/")
-def read_root():
-    return {"status": "ok", "app": "DealFlow Gastos Backend v2.4.0"}
+
+def _has_valid_signature(path: Path, extension: str) -> bool:
+    with path.open("rb") as source:
+        header = source.read(12)
+    if extension in {".jpg", ".jpeg"}:
+        return header.startswith(b"\xff\xd8\xff")
+    if extension == ".png":
+        return header.startswith(b"\x89PNG\r\n\x1a\n")
+    if extension == ".pdf":
+        return header.startswith(b"%PDF-")
+    return False
 
 @app.post("/upload-receipt")
 async def upload_receipt(
@@ -385,15 +435,13 @@ async def upload_receipt(
                 "id": str(uuid.uuid4()) if 'uuid' in locals() else "temp-id",
                 "usuario_nombre": user.name,
                 "usuario_email": user.email,
-                "departamento": department if 'department' in locals() else "General",
-                "centro_costo": costCenter if 'costCenter' in locals() else "General",
-                "rut_proveedor": "",
-                "rut_receptor": "",
-                "es_e_voltage": False,
+                "departamento": department,
+                "centro_costo": costCenter,
+                "rut_proveedor": None,
                 "fecha_boleta": datetime.now().strftime("%Y-%m-%d"),
                 "monto_total": 0,
                 "iva": 0,
-                "link_drive": link_drive if 'link_drive' in locals() else ""
+                "link_drive": link_drive if 'link_drive' in locals() else None
             }
         }
 
