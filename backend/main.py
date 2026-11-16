@@ -24,7 +24,7 @@ from email.mime.multipart import MIMEMultipart
 MAX_FILE_SIZE_MB = 10
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".pdf"}
-ALLOWED_MIME_TYPES = {"image/jpeg", "image/png", "application/pdf"}
+ALLOWED_MIME_TYPES = {"image/jpeg", "image/jpg", "image/png", "application/pdf", "application/x-pdf", "application/octet-stream"}
 
 from accounting import VALID_STATUSES, as_db_number, calculate_vat, normalize_ledger
 from security import (
@@ -242,11 +242,9 @@ class EditExpensePayload(StrictPayload):
 
     @model_validator(mode="after")
     def validate_document_rules(self):
-        if self.tipo_transaccion == "Factura" and not self.rut_proveedor:
-            raise ValueError("rut_proveedor es obligatorio para Facturas")
-        if self.tipo_transaccion == "Nota de Crédito" and not self.factura_asociada:
-            raise ValueError("factura_asociada es obligatoria para Notas de Crédito")
-        if self.estado not in VALID_STATUSES:
+        # Al editar registros existentes (por ejemplo, adjuntar comprobantes de Kame o cerrar rendiciones históricas),
+        # no se bloquea por ausencia previa de RUT proveedor o factura asociada.
+        if self.estado and self.estado not in VALID_STATUSES:
             raise ValueError("estado inválido")
         return self
 
