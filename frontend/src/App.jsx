@@ -47,6 +47,17 @@ const isPendingStatus = (estado) => [
 const isValidExpense = (expense) => !isRejectedOrVoid(expense.estado)
   && !['Saldo Inicial', 'Ingreso de Dinero', 'Nota de Crédito'].includes(expense.tipo_transaccion);
 
+const extractErrorMessage = (err, fallback) => {
+  const detail = err?.response?.data?.detail ?? err?.response?.data?.error;
+  if (typeof detail === 'string' && detail.trim()) return detail;
+  if (Array.isArray(detail) && detail.length > 0) {
+    return detail
+      .map(e => (typeof e === 'string' ? e : (e.msg || e.loc?.join('.') || JSON.stringify(e))))
+      .join(', ');
+  }
+  return err?.message || fallback;
+};
+
 const HoverDropdown = ({ label, value, options, onChange, className = "" }) => {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = React.useRef(null);
@@ -636,7 +647,7 @@ function App() {
       fetchHistory();
     } catch (err) {
       console.error("Error updating status", err);
-      showError("Error", err.response?.data?.detail || "Hubo un error al actualizar el estado");
+      showError("Error", extractErrorMessage(err, "Hubo un error al actualizar el estado"));
     }
   };
 
@@ -651,7 +662,7 @@ function App() {
           fetchHistory();
         } catch (err) {
           console.error("Error deleting", err);
-          showError("Error", err.response?.data?.detail || "Hubo un error al eliminar el registro.");
+          showError("Error", extractErrorMessage(err, "Hubo un error al eliminar el registro."));
         }
       }
     );
@@ -661,11 +672,11 @@ function App() {
     setEditingExpense(exp);
     setEditFile(null);
     setEditForm({
-      departamento: exp.departamento,
-      centro_costo: exp.centro_costo,
-      rut_proveedor: exp.rut_proveedor,
-      fecha_boleta: exp.fecha_boleta,
-      monto_total: exp.monto_total,
+      departamento: exp.departamento || 'General',
+      centro_costo: exp.centro_costo || 'General',
+      rut_proveedor: exp.rut_proveedor || '',
+      fecha_boleta: exp.fecha_boleta || '',
+      monto_total: exp.monto_total ?? 0,
       link_drive: exp.link_drive || '',
       tipo_transaccion: exp.tipo_transaccion || 'Boleta',
       origen_fondos: exp.origen_fondos || 'Caja Principal',
@@ -689,15 +700,15 @@ function App() {
         formData.append('file', editFile);
         formData.append('userName', user.name);
         formData.append('userEmail', user.email);
-        formData.append('department', editForm.departamento);
-        formData.append('costCenter', editForm.centro_costo);
+        formData.append('department', editForm.departamento || 'General');
+        formData.append('costCenter', editForm.centro_costo || 'General');
         formData.append('skip_ocr', 'true');
 
         const uploadRes = await api.post('/upload-receipt', formData, authConfig());
-        if (uploadRes.data.success && uploadRes.data.data.link_drive) {
+        if (uploadRes.data.success && uploadRes.data.data?.link_drive) {
           finalLinkDrive = uploadRes.data.data.link_drive;
         } else {
-          showError("Error al subir archivo", uploadRes.data.error || "No se pudo subir el comprobante a Google Drive.");
+          showError("Error al subir archivo", uploadRes.data?.error || "No se pudo subir el comprobante a Google Drive.");
           setIsUpdating(false);
           return;
         }
@@ -708,18 +719,23 @@ function App() {
         link_drive: finalLinkDrive
       };
 
-      await api.put(
+      const updateRes = await api.put(
         `/expense/${editingExpense.id}`,
         payload,
         authConfig()
       );
+      if (updateRes.data && updateRes.data.success === false) {
+        showError("Error", updateRes.data.error || "No se pudo actualizar el gasto.");
+        setIsUpdating(false);
+        return;
+      }
       setEditingExpense(null);
       setEditFile(null);
       fetchHistory();
       showSuccess("Gasto Actualizado", "El registro y su documento de respaldo han sido actualizados correctamente.");
     } catch (err) {
       console.error("Error updating", err);
-      showError("Error", err.response?.data?.detail || "Error al actualizar el gasto");
+      showError("Error", extractErrorMessage(err, "Error al actualizar el gasto"));
     } finally {
       setIsUpdating(false);
     }
@@ -2086,29 +2102,50 @@ function App() {
               {/* Edit Modal */}
               {editingExpense && (
                 <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-                  <div className="bg-white rounded-2xl max-w-md w-full overflow-hidden shadow-2xl transform transition-all">
-                    <div className="px-6 py-5 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+                  <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] flex flex-col overflow-hidden shadow-2xl transform transition-all">
+                    <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center shrink-0">
                       <h3 className="font-bold text-slate-800 flex items-center gap-2 text-lg"><Edit2 className="h-5 w-5 text-[#38bdf8]" /> Corregir Gasto</h3>
                       <button onClick={() => setEditingExpense(null)} className="p-1.5 hover:bg-slate-200 rounded-full text-slate-400 transition-colors"><X className="h-5 w-5" /></button>
                     </div>
-                    <div className="p-6 space-y-5">
-                      <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Centro de Costo</label>
-                        <input type="text" value={editForm.centro_costo} onChange={e => setEditForm({...editForm, centro_costo: e.target.value.toUpperCase()})} className="w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all p-3 rounded-xl uppercase" />
-                      </div>
-                      <div className="grid grid-cols-2 gap-5">
+                    <div className="p-6 space-y-4 overflow-y-auto">
+                      <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">RUT Proveedor</label>
-                          <input type="text" value={editForm.rut_proveedor} onChange={e => setEditForm({...editForm, rut_proveedor: e.target.value})} className="w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all p-3 rounded-xl" />
+                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Tipo Documento</label>
+                          <select
+                            value={editForm.tipo_transaccion || 'Boleta'}
+                            onChange={e => setEditForm({...editForm, tipo_transaccion: e.target.value})}
+                            className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all text-sm font-semibold text-slate-800"
+                          >
+                            <option value="Boleta">Boleta</option>
+                            <option value="Factura">Factura</option>
+                            <option value="Sin Respaldo">Sin Respaldo</option>
+                            <option value="Nota de Crédito">Nota de Crédito</option>
+                            <option value="Ingreso de Dinero">Ingreso de Dinero</option>
+                            <option value="Saldo Inicial">Saldo Inicial</option>
+                          </select>
                         </div>
                         <div>
-                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Fecha Boleta</label>
-                          <input type="text" value={editForm.fecha_boleta} onChange={e => setEditForm({...editForm, fecha_boleta: e.target.value})} className="w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all p-3 rounded-xl" />
+                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">N° Documento</label>
+                          <input type="text" value={editForm.factura_asociada || ''} onChange={e => setEditForm({...editForm, factura_asociada: e.target.value})} placeholder="Opcional" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all text-sm" />
                         </div>
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Monto Total ($)</label>
-                        <input type="number" value={editForm.monto_total} onChange={e => setEditForm({...editForm, monto_total: parseFloat(e.target.value) || 0})} className="w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all p-3 rounded-xl font-bold text-lg text-[#0284c7]" />
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Centro de Costo</label>
+                        <input type="text" value={editForm.centro_costo || ''} onChange={e => setEditForm({...editForm, centro_costo: e.target.value.toUpperCase()})} className="w-full bg-white border border-slate-300 rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all uppercase text-sm" />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">RUT Proveedor</label>
+                          <input type="text" value={editForm.rut_proveedor || ''} onChange={e => setEditForm({...editForm, rut_proveedor: e.target.value})} placeholder="Opcional" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all text-sm" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Fecha Boleta</label>
+                          <input type="text" value={editForm.fecha_boleta || ''} onChange={e => setEditForm({...editForm, fecha_boleta: e.target.value})} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all text-sm" />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Monto Total ($)</label>
+                        <input type="number" value={editForm.monto_total ?? 0} onChange={e => setEditForm({...editForm, monto_total: parseFloat(e.target.value) || 0})} className="w-full bg-white border border-slate-300 rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all font-bold text-lg text-[#0284c7]" />
                       </div>
 
                       {editForm.origen_fondos === 'Fondos Mixtos' && (
