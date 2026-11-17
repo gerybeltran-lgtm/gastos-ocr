@@ -639,11 +639,15 @@ function App() {
     }
     
     try {
-      await api.post('/update-expense-status', {
+      const res = await api.post('/update-expense-status', {
         id,
         estado: nuevoEstado,
         comentarios_revisor: comentarios
       }, authConfig());
+      if (res.data && res.data.success === false) {
+        showError("Error", res.data.error || "Hubo un error al actualizar el estado");
+        return;
+      }
       fetchHistory();
     } catch (err) {
       console.error("Error updating status", err);
@@ -2133,10 +2137,18 @@ function App() {
                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Centro de Costo</label>
                         <input type="text" value={editForm.centro_costo || ''} onChange={e => setEditForm({...editForm, centro_costo: e.target.value.toUpperCase()})} className="w-full bg-white border border-slate-300 rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all uppercase text-sm" />
                       </div>
+                      {editForm.tipo_transaccion === 'Factura' && !editForm.rut_proveedor?.trim() && (
+                        <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl flex items-start gap-2.5 text-amber-900 text-xs">
+                          <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                          <div>
+                            <span className="font-bold">Factura sin RUT de proveedor:</span> la base de datos exige un <strong>RUT Proveedor</strong> para guardar o aprobar una Factura. Ingrésalo abajo o cambia <strong>Tipo Documento</strong> a <em>Boleta</em> o <em>Sin Respaldo</em>.
+                          </div>
+                        </div>
+                      )}
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">RUT Proveedor</label>
-                          <input type="text" value={editForm.rut_proveedor || ''} onChange={e => setEditForm({...editForm, rut_proveedor: e.target.value})} placeholder="Opcional" className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all text-sm" />
+                          <input type="text" value={editForm.rut_proveedor || ''} onChange={e => setEditForm({...editForm, rut_proveedor: e.target.value})} placeholder={editForm.tipo_transaccion === 'Factura' ? 'Obligatorio para Factura' : 'Opcional'} className={`w-full bg-white border ${editForm.tipo_transaccion === 'Factura' && !editForm.rut_proveedor?.trim() ? 'border-amber-400' : 'border-slate-300'} rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all text-sm`} />
                         </div>
                         <div>
                           <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Fecha Boleta</label>
