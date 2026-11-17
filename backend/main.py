@@ -544,6 +544,15 @@ async def admin_history(_: AuthenticatedUser = Depends(require_admin)):
         print(f"Error obteniendo historial admin: {str(e)}")
         return {"success": False, "error": "Error interno al obtener historial admin"}
 
+def _raise_db_error(exc: Exception, default_msg: str):
+    err_str = str(exc)
+    if "transacciones_invoice_vendor_rut" in err_str:
+        raise HTTPException(
+            status_code=422,
+            detail="Esta Factura no tiene RUT de proveedor registrado. Ingresa el RUT del proveedor en 'Corregir Gasto' (o cambia Tipo Documento a 'Boleta' / 'Sin Respaldo') para poder guardarla o aprobarla.",
+        )
+    raise HTTPException(status_code=500, detail=default_msg)
+
 @app.post("/update-expense-status")
 async def update_expense_status(data: UpdateStatusPayload, _: AuthenticatedUser = Depends(require_approver)):
     try:
@@ -556,7 +565,7 @@ async def update_expense_status(data: UpdateStatusPayload, _: AuthenticatedUser 
         raise
     except Exception as e:
         print(f"Error updating status: {str(e)}")
-        return {"success": False, "error": "Error interno al actualizar estado"}
+        _raise_db_error(e, "Error interno al actualizar estado")
 
 @app.delete("/expense/{expense_id}")
 async def delete_expense(expense_id: str, _: AuthenticatedUser = Depends(require_approver)):
@@ -626,7 +635,7 @@ async def edit_expense(
         raise
     except Exception as e:
         print(f"Error editando gasto: {str(e)}")
-        return {"success": False, "error": "Error interno al editar el gasto"}
+        _raise_db_error(e, "Error interno al editar el gasto")
 
 if __name__ == "__main__":
     import uvicorn
